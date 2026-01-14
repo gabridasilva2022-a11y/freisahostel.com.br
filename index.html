@@ -311,6 +311,14 @@
   const qs = s => document.querySelector(s);
   const qsa = s => Array.from(document.querySelectorAll(s));
 
+  // Map short labels used for bed display per room
+  const ROOM_LABELS = {
+    q007: 'Misto',
+    ar: 'Feminino',
+    jb: 'Nice',
+    q777: 'Suíte' // suites remain as-is - we won't rewrite suite labels
+  };
+
   // Calendar color map per room (kept for card styling), but calendar day colors will be the standard green/red
   const ROOM_CAL_COLORS = {
     jb: { swatchAvailable: '#fdecea', swatchReserved: '#7a0b0b' },
@@ -436,6 +444,20 @@
       return `<img src="${SUITE_ICON_URL}" alt="suíte" style="width:48px;height:36px;object-fit:contain;display:block;margin:0 auto 6px" />`;
     }
     return suiteSvg;
+  }
+
+  // Helper to map internal bed id (C{index}-{T|B}) to display label per room
+  function bedIdToLabel(roomId, bedId){
+    if(!bedId) return bedId;
+    const labelBase = ROOM_LABELS[roomId] || ROOM_LABELS['jb'] || 'Cama';
+    // bedId e.g. C3-T
+    const m = /^C(\d+)-([TB])$/.exec(bedId);
+    if(!m) return bedId;
+    const idx = Number(m[1]); // 1..7
+    const pos = m[2]; // 'T' or 'B'
+    // numbering: top (T) -> odd numbers 1,3,5,... ; bottom (B) -> even numbers 2,4,6,...
+    const number = pos === 'T' ? (idx * 2 - 1) : (idx * 2);
+    return `${labelBase} ${number}`;
   }
 
   const calSmallState = { roomId: null, currentDate: new Date(), onSelect: null };
@@ -649,10 +671,22 @@
     overlay.classList.add('show'); overlay.setAttribute('aria-hidden','false');
 
     const avail = checkAvailability(roomId, checkin, checkout);
+    // Build top and bottom arrays with display labels according to requested numbering:
     const topBeds = [];
     const bottomBeds = [];
-    for (let i=1;i<=7;i++){ topBeds.push(`C${i}-T`); bottomBeds.push(`C${i}-B`); }
-    const allBeds = topBeds.concat(bottomBeds);
+    // 7 positions each (internal IDs remain C1..C7)
+    const roomLabel = ROOM_LABELS[roomId] || ROOM_LABELS['jb'] || 'Cama';
+    for (let i=1;i<=7;i++){
+      const topId = `C${i}-T`;
+      const bottomId = `C${i}-B`;
+      // numbering: top -> odd, bottom -> even
+      const topNum = i * 2 - 1;
+      const bottomNum = i * 2;
+      topBeds.push({ id: topId, label: `${roomLabel} ${topNum}` });
+      bottomBeds.push({ id: bottomId, label: `${roomLabel} ${bottomNum}` });
+    }
+
+    const allBeds = topBeds.map(b=>b.id).concat(bottomBeds.map(b=>b.id));
     const reservedSet = new Set(allBeds.filter(bid => !avail.availableBeds.includes(bid)));
 
     let selected = Array.from(preselected || []).slice(0, maxBeds);
@@ -686,11 +720,13 @@
     const gridTop = modal.querySelector('#bedsGridTop');
     const gridBottom = modal.querySelector('#bedsGridBottom');
 
-    function createBedHtml(bid){
+    function createBedHtml(b){
+      const bid = b.id;
       const isReserved = reservedSet.has(bid);
       const isSelected = selected.includes(bid);
       const imgHtml = `<img src="${BED_BUTTON_IMAGE}" alt="beliche ${bid}" />`;
-      return `<div class="bed-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-bed="${bid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${bid}</div><div style="font-size:0.85rem">${isReserved ? 'Indisponível' : 'Disponível'}</div></div>`;
+      const displayLabel = b.label || bedIdToLabel(roomId, bid);
+      return `<div class="bed-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-bed="${bid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${escapeHtml(displayLabel)}</div><div style="font-size:0.85rem">${isReserved ? 'Indisponível' : 'Disponível'}</div></div>`;
     }
 
     function renderBeds(){
@@ -976,6 +1012,9 @@
           </div>
         </div>
 
+        <!-- Guest info inputs (dynamic based on number of guests) -->
+        <div data-role="guestinfo" style="margin-top:12px"></div>
+
         <div style="margin-top:8px;color:var(--muted)">
           <label style="display:block;color:rgba(255,255,255,0.95)"><input type="checkbox" data-role="early" /> Check-in antecipado (+${formatCurrency(getExtraPrice('early_checkin')||30)})</label>
           <label style="display:block;color:rgba(255,255,255,0.95)"><input type="checkbox" data-role="late" /> Check-out estendido (+${formatCurrency(getExtraPrice('late_checkout')||30)})</label>
@@ -1013,11 +1052,63 @@
       const extrasEl = card.querySelector('[data-role="extras"]');
       const totalEl = card.querySelector('[data-role="total"]');
       const reserveBtn = card.querySelector('[data-role="reserve"]');
+      const guestInfoContainer = card.querySelector('[data-role="guestinfo"]');
 
-      const state = { checkin:null, checkout:null, guests:1, selectedBeds:[], selectedSuites:[], early:false, late:false, transferIn:false, transferOut:false };
+      const state = { checkin:null, checkout:null, guests:1, selectedBeds:[], selectedSuites:[], early:false, late:false, transferIn:false, transferOut:false, guestInfo: [] };
+
+      // initialize guestInfo for 1 guest
+      function ensureGuestInfo(n){
+        state.guestInfo = state.guestInfo || [];
+        while(state.guestInfo.length < n) state.guestInfo.push({ name: '', id: '' });
+        if(state.guestInfo.length > n) state.guestInfo = state.guestInfo.slice(0, n);
+      }
+      ensureGuestInfo(1);
 
       // Update select button initial text
       selectBedsBtn.textContent = roomId==='q777' ? `Selecionar suítes (${state.selectedSuites.length})` : `Selecionar camas (${state.selectedBeds.length})`;
+
+      function renderGuestFields(){
+        ensureGuestInfo(state.guests);
+        // Build markup for each guest: name + cpf/passaporte
+        guestInfoContainer.innerHTML = '';
+        for(let i=0;i<state.guests;i++){
+          const g = state.guestInfo[i] || { name:'', id:'' };
+          const block = document.createElement('div');
+          block.style.marginBottom = '8px';
+          block.innerHTML = `
+            <div style="font-weight:700;margin-bottom:6px;color:rgba(255,255,255,0.95)">Hóspede ${i+1}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input type="text" placeholder="Nome do hóspede ${i+1}" data-guest-name="${i}" style="flex:1;padding:8px;border-radius:8px;border:0;background:rgba(255,255,255,0.04);color:#fff" />
+              <input type="text" placeholder="CPF ou passaporte" data-guest-id="${i}" style="width:200px;padding:8px;border-radius:8px;border:0;background:rgba(255,255,255,0.04);color:#fff" />
+            </div>
+          `;
+          guestInfoContainer.appendChild(block);
+        }
+        // Attach listeners
+        guestInfoContainer.querySelectorAll('[data-guest-name]').forEach(inp=>{
+          inp.addEventListener('input', e=>{
+            const idx = Number(e.target.getAttribute('data-guest-name'));
+            ensureGuestInfo(state.guests);
+            state.guestInfo[idx].name = e.target.value.trim();
+          });
+        });
+        guestInfoContainer.querySelectorAll('[data-guest-id]').forEach(inp=>{
+          inp.addEventListener('input', e=>{
+            const idx = Number(e.target.getAttribute('data-guest-id'));
+            ensureGuestInfo(state.guests);
+            state.guestInfo[idx].id = e.target.value.trim();
+          });
+        });
+        // Populate existing values (in case of updates)
+        guestInfoContainer.querySelectorAll('[data-guest-name]').forEach(el=>{
+          const idx = Number(el.getAttribute('data-guest-name'));
+          el.value = state.guestInfo[idx] ? state.guestInfo[idx].name : '';
+        });
+        guestInfoContainer.querySelectorAll('[data-guest-id]').forEach(el=>{
+          const idx = Number(el.getAttribute('data-guest-id'));
+          el.value = state.guestInfo[idx] ? state.guestInfo[idx].id : '';
+        });
+      }
 
       function updatePriceUI(){
         const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites);
@@ -1036,7 +1127,14 @@
         if(parseLocalDate(state.checkout) <= parseLocalDate(state.checkin)) return false;
         if(roomId === 'q777') return state.selectedSuites.length > 0;
         // New rule: number of selected beds must be equal to number of guests
-        return state.selectedBeds.length === state.guests;
+        if(state.selectedBeds.length !== state.guests) return false;
+        // Guest info validation
+        ensureGuestInfo(state.guests);
+        for(let i=0;i<state.guests;i++){
+          const g = state.guestInfo[i];
+          if(!g || !g.name || !g.id) return false;
+        }
+        return true;
       }
 
       function openSmallCalFor(field){
@@ -1080,9 +1178,14 @@
         if(state.selectedBeds.length > state.guests){
           state.selectedBeds = state.selectedBeds.slice(0, state.guests);
         }
+        ensureGuestInfo(state.guests);
+        renderGuestFields();
         selectBedsBtn.textContent = roomId==='q777' ? `Selecionar suítes (${state.selectedSuites.length})` : `Selecionar camas (${state.selectedBeds.length})`;
         updatePriceUI();
       });
+
+      // initial render guest fields
+      renderGuestFields();
 
       selectBedsBtn.addEventListener('click', ()=> {
         if(roomId === 'q777'){
@@ -1114,8 +1217,19 @@
           alert(`Para este quarto é necessário selecionar exatamente ${state.guests} cama(s). Atualmente selecionadas: ${state.selectedBeds.length}.`);
           return;
         }
+        // Validate guest info (name + cpf/passaporte) for each guest
+        ensureGuestInfo(state.guests);
+        for(let i=0;i<state.guests;i++){
+          const g = state.guestInfo[i];
+          if(!g || !g.name || !g.id){
+            alert(`Por favor preencha o nome e CPF/passaporte do hóspede ${i+1} antes de continuar.`);
+            return;
+          }
+        }
+
         const nights = Math.ceil((parseLocalDate(state.checkout) - parseLocalDate(state.checkin)) / (1000*60*60*24));
-        const bedsText = roomId === 'q777' ? state.selectedSuites.join(', ') : state.selectedBeds.join(', ');
+        // Build beds text with human labels
+        const bedsText = roomId === 'q777' ? state.selectedSuites.join(', ') : state.selectedBeds.map(bid=>bedIdToLabel(roomId, bid)).join(', ');
         const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites);
         let total = baseTotal;
         if(state.early) total += getExtraPrice('early_checkin');
@@ -1124,7 +1238,11 @@
         if(state.transferOut) total += getExtraPrice('transfer_departure');
 
         const roomName = roomObj ? roomObj.name : roomId;
-        let message = `Olá! Gostaria de solicitar reserva para ${roomName}.\n\n📅 Check-in: ${formatBR(state.checkin)}\n📅 Check-out: ${formatBR(state.checkout)}\n🌙 Noites: ${nights}\n👥 Hóspedes: ${state.guests}\n${roomId==='q777'?'🏠 Suítes':'🛏️ Camas'}: ${bedsText}\n\n💰 Resumo:\n- Valor base: ${formatCurrency(baseTotal)}`;
+        let message = `Olá! Gostaria de solicitar reserva para ${roomName}.\n\n📅 Check-in: ${formatBR(state.checkin)}\n📅 Check-out: ${formatBR(state.checkout)}\n🌙 Noites: ${nights}\n👥 Hóspedes: ${state.guests}\n${roomId==='q777'?'🏠 Suítes':'🛏️ Camas'}: ${bedsText}\n\n👤 Dados dos hóspedes:\n`;
+        state.guestInfo.forEach((g, idx) => {
+          message += `- ${idx+1}. ${g.name} — ${g.id}\n`;
+        });
+        message += `\n💰 Resumo:\n- Valor base: ${formatCurrency(baseTotal)}`;
         if(state.early) message += `\n- Check-in antecipado: ${formatCurrency(getExtraPrice('early_checkin'))}`;
         if(state.late) message += `\n- Check-out estendido: ${formatCurrency(getExtraPrice('late_checkout'))}`;
         if(state.transferIn) message += `\n- Transfer ida: ${formatCurrency(getExtraPrice('transfer_arrival'))}`;
