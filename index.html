@@ -9,7 +9,18 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="format-detection" content="telephone=no" />
+
+  <!-- SEO meta tags requested -->
   <title>FreiSa Hostel — Reserva (v7)</title>
+  <meta name="description" content="FreiSa Hostel — Hostel em Copacabana. Hospedagem confortável, econômica e com ótima localização em Copacabana. Reserve camas ou suítes com facilidade." />
+  <meta name="keywords" content="hostel em Copacabana, hostel, Copacabana, freisa hostel, hospedagem, hospedagem em Copacabana, hospedagem barata em Copacabana" />
+  <link rel="canonical" href="https://example.com/freisa-hostel-reserva" />
+
+  <!-- Open Graph (basic) -->
+  <meta property="og:title" content="FreiSa Hostel — Reserva" />
+  <meta property="og:description" content="Hostel em Copacabana — hospedagem com bom custo‑benefício. Reserve camas e suítes no FreiSa Hostel." />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="pt_BR" />
 
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 
@@ -97,7 +108,7 @@
     /* Reservation */
     .reservation-section{background:linear-gradient(135deg,#0f1724 0%,#0b1220 100%);padding:18px;border-radius:12px;color:#fff}
     .reservation-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:12px}
-    .reservation-card{background:rgba(255,255,255,0.04);padding:14px;border-radius:10px}
+    .reservation-card{ /* default fallback, may be overridden inline per room */ background:rgba(255,255,255,0.04);padding:14px;border-radius:10px;color:#fff; border:1px solid rgba(255,255,255,0.03) }
     .form-group label{display:block;margin-bottom:6px;font-weight:700;color:rgba(255,255,255,0.95)}
     input[type="text"], select { width:100%;padding:10px;border-radius:10px;border:0;background:rgba(255,255,255,0.04);color:#fff;outline:none }
 
@@ -135,8 +146,8 @@
       overflow:hidden;
     }
     .calendar-day-small.empty{background:transparent;cursor:default}
-    .calendar-day-small.available{background:linear-gradient(180deg,#e6f6ea,#e0f2e7);color:var(--accent-600)}
-    .calendar-day-small.reserved{background:linear-gradient(180deg,#fdecea,#fbe6e4);color:var(--danger)}
+    .calendar-day-small.available{ /* will be set inline to green */ }
+    .calendar-day-small.reserved{ /* will be set inline to red */ }
     .calendar-day-small.past{opacity:0.85}
     .calendar-day-small .cal-day-num{font-weight:700;font-size:1.05rem;line-height:1}
     .calendar-day-small .cal-day-price{display:none} /* preços removidos */
@@ -145,11 +156,30 @@
 
     /* Beds / suites */
     .beds-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin-top:12px}
-    .bed-item{padding:10px;border-radius:8px;border:1px solid #e9e9e9;background:#fff;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;min-height:110px}
+    .bed-item{padding:10px;border-radius:8px;border:1px solid #e9e9e9;background:#fff;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;min-height:110px;position:relative;transition:box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease}
     .bed-item img{width:64px;height:48px;object-fit:cover;border-radius:6px}
     .bed-item.reserved{background:var(--danger);color:#fff;border-color:var(--danger);cursor:not-allowed;opacity:0.9}
     .bed-item:not(.reserved){background:var(--accent);color:#fff;border-color:var(--accent)}
-    .bed-item.selected{transform:translateY(-6px);box-shadow:0 12px 36px rgba(2,6,23,0.12)}
+    .bed-item.selected{transform:translateY(-6px) scale(1.02);box-shadow:0 14px 40px rgba(39,174,96,0.18);border-color:#1e8449}
+    /* confirmation badge and pop animation */
+    .bed-item.selected::after{
+      content: '✓';
+      position: absolute;
+      top:8px;
+      right:8px;
+      background: #27ae60;
+      color: #fff;
+      width:22px;
+      height:22px;
+      border-radius:50%;
+      display:grid;
+      place-items:center;
+      font-weight:700;
+      box-shadow: 0 6px 18px rgba(39,174,96,0.18);
+      transform: scale(0);
+      animation: popIn 260ms cubic-bezier(.2,.9,.2,1) forwards;
+    }
+    @keyframes popIn{ from{ transform: scale(0);} to{ transform: scale(1);} }
 
     .suite-item{padding:12px;border-radius:10px;border:1px solid #eaeaea;background:#fff;text-align:center;cursor:pointer;min-height:110px;display:flex;flex-direction:column;align-items:center;gap:8px}
     .suite-item img{width:64px;height:48px;object-fit:contain;border-radius:6px}
@@ -280,6 +310,22 @@
 
   const qs = s => document.querySelector(s);
   const qsa = s => Array.from(document.querySelectorAll(s));
+
+  // Calendar color map per room (kept for card styling), but calendar day colors will be the standard green/red
+  const ROOM_CAL_COLORS = {
+    jb: { swatchAvailable: '#fdecea', swatchReserved: '#7a0b0b' },
+    ar: { swatchAvailable: '#e8f7ef', swatchReserved: '#fdecea' },
+    q007: { swatchAvailable: '#eaf6ff', swatchReserved: '#d3e6ff' },
+    q777: { swatchAvailable: '#f5eefe', swatchReserved: '#e9d7ff' }
+  };
+
+  // NEW: styles for the outer reservation card per room (user requested card background differences)
+  const ROOM_CARD_STYLES = {
+    jb: 'background: linear-gradient(135deg,#5b0b0b 0%, #3a0505 100%); border:1px solid rgba(0,0,0,0.25); color: #fff;',
+    ar: 'background: linear-gradient(135deg,#0f4d2e 0%, #1e8449 100%); border:1px solid rgba(0,0,0,0.18); color: #fff;',
+    q007: 'background: linear-gradient(135deg,#083a66 0%, #0b6fb7 100%); border:1px solid rgba(0,0,0,0.18); color: #fff;',
+    q777: 'background: linear-gradient(135deg,#4b106a 0%, #6b21a8 100%); border:1px solid rgba(0,0,0,0.18); color: #fff;'
+  };
 
   function parseCSV(csvText){
     if(!csvText) return [];
@@ -596,6 +642,7 @@
     document.addEventListener('keydown', onKey);
   }
 
+  // Beds modal: now requires selecting exactly maxBeds (equal to number of guests)
   function openBedsModal({ roomId, maxBeds = 1, preselected = [], checkin = null, checkout = null, onConfirm = null } = {}) {
     const overlay = qs('#calendarOverlay');
     overlay.innerHTML = '';
@@ -622,14 +669,14 @@
         </div>
       </div>
       <div class="modal-body">
-        <div style="color:var(--muted);margin-bottom:8px">Selecione até ${maxBeds} cama(s). ${checkin && checkout ? `Período: ${formatBR(checkin)} — ${formatBR(checkout)}` : ''}</div>
+        <div style="color:var(--muted);margin-bottom:8px">Selecione exatamente ${maxBeds} cama(s). ${checkin && checkout ? `Período: ${formatBR(checkin)} — ${formatBR(checkout)}` : ''}</div>
         <div style="font-weight:700;margin-top:6px">Camas — Superior (7)</div>
         <div class="beds-grid" id="bedsGridTop"></div>
         <div style="font-weight:700;margin-top:12px">Camas — Inferior (7)</div>
         <div class="beds-grid" id="bedsGridBottom"></div>
       </div>
       <div class="modal-footer">
-        <div style="flex:1;align-self:center;color:var(--muted)"><span id="bedsCount">${selected.length}</span> selecionada(s)</div>
+        <div style="flex:1;align-self:center;color:var(--muted)"><span id="bedsCount">${selected.length}</span> selecionada(s) — necessário: ${maxBeds}</div>
         <button id="bedsCancel" class="btn">Cancelar</button>
         <button id="bedsConfirm" class="btn btn-primary">Confirmar</button>
       </div>
@@ -663,6 +710,9 @@
             } else {
               if(selected.length >= maxBeds) {
                 el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(0)' }], { duration: 180 });
+                grid.querySelectorAll('.bed-item.selected').forEach(s => {
+                  s.animate([{ boxShadow: '0 14px 40px rgba(39,174,96,0.18)' }, { boxShadow: '0 14px 40px rgba(39,174,96,0.36)' }, { boxShadow: '0 14px 40px rgba(39,174,96,0.18)' }], { duration: 260 });
+                });
                 return;
               }
               selected.push(id);
@@ -681,6 +731,10 @@
     modal.querySelector('#bedsClose')?.addEventListener('click', closeAll);
     modal.querySelector('#bedsCancel')?.addEventListener('click', closeAll);
     modal.querySelector('#bedsConfirm')?.addEventListener('click', ()=> {
+      if(selected.length !== maxBeds){
+        alert(`Por favor selecione exatamente ${maxBeds} cama(s). Atualmente selecionadas: ${selected.length}.`);
+        return;
+      }
       if(typeof onConfirm === 'function') onConfirm(selected.slice());
       closeAll();
     });
@@ -790,10 +844,7 @@
             <div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div><div>Dom</div>
           </div>
           <div class="calendar-grid-small" id="calendarGridSmall"></div>
-          <div class="calendar-legend" style="margin-top:10px">
-            <div style="display:flex;align-items:center;gap:6px;margin-right:12px"><span class="swatch" style="background:#e8f7ef;border:1px solid rgba(39,174,96,0.08)"></span><span>Disponível</span></div>
-            <div style="display:flex;align-items:center;gap:6px"><span class="swatch" style="background:#fdecea;border:1px solid rgba(231,76,60,0.08)"></span><span>Reservado / Indisponível</span></div>
-          </div>
+          <div class="calendar-legend" style="margin-top:10px"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -817,6 +868,7 @@
     calSmallState.roomId = null; calSmallState.onSelect = null;
   }
 
+  // IMPORTANT: calendar day coloring restored to green (available) and red (reserved)
   function renderCalendarSmall(){
     const modal = qs('#calendarOverlay .modal'); if(!modal) return;
     const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -836,11 +888,21 @@
       grid.appendChild(empty);
     }
 
-    // ALTERAÇÃO: não marcar datas como reservadas no calendário pequeno
-    const reservedSet = new Set();
+    // Keep reservedSet empty by default (previous logic), but days' colors follow the standard green/red rule:
+    const reservedSet = new Set(); // if you add reserved dates, mark them here
 
     const today = new Date();
     today.setHours(0,0,0,0);
+
+    // Standard color scheme: green available, red reserved
+    const standardColors = {
+      available: 'linear-gradient(180deg,#e6f6ea,#e0f2e7)', // light green
+      reserved: 'linear-gradient(180deg,#fdecea,#fbe6e4)',  // light red
+      textAvailable: '#1e8449',
+      textReserved: '#b91c1c',
+      swatchAvailable: '#e8f7ef',
+      swatchReserved: '#fdecea'
+    };
 
     for(let d=1; d<=daysInMonth; d++){
       const dateObj = new Date(year, month, d); dateObj.setHours(0,0,0,0);
@@ -856,6 +918,10 @@
 
       div.innerHTML = `<div class="cal-day-num">${d}</div>`;
 
+      // Apply the standard green/red scheme
+      div.style.background = isUnavailable ? standardColors.reserved : standardColors.available;
+      div.style.color = isUnavailable ? standardColors.textReserved : standardColors.textAvailable;
+
       if(isUnavailable){
         div.setAttribute('aria-disabled','true');
         div.addEventListener('click', (e)=> e.stopPropagation());
@@ -867,13 +933,31 @@
       }
       grid.appendChild(div);
     }
+
+    // Update legend with standard green/red swatches (but if you want room-specific swatches you can replace them)
+    const legend = modal.querySelector('.calendar-legend');
+    if(legend){
+      legend.innerHTML = `
+        <div style="display:flex;align-items:center;gap:6px;margin-right:12px">
+          <span class="swatch" style="background:${standardColors.swatchAvailable};border:1px solid rgba(30,132,73,0.12)"></span>
+          <span>Disponível</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="swatch" style="background:${standardColors.swatchReserved};border:1px solid rgba(185,28,28,0.08)"></span>
+          <span>Reservado / Indisponível</span>
+        </div>
+      `;
+    }
   }
 
   function renderReservationCards(){
     const container = qs('#reservationCards');
     if(!container) return;
-    container.innerHTML = staticRooms.map(r => `
-      <div class="reservation-card" data-roomid="${r.roomId}">
+    // Build cards, adding inline style from ROOM_CARD_STYLES per room
+    container.innerHTML = staticRooms.map(r => {
+      const styleAttr = ROOM_CARD_STYLES[r.roomId] ? `style="${ROOM_CARD_STYLES[r.roomId]}"` : '';
+      return `
+      <div class="reservation-card" data-roomid="${r.roomId}" ${styleAttr}>
         <h3 style="margin-top:0;color:#fff">${r.name}</h3>
         <div style="display:flex;gap:8px">
           <div style="flex:1">
@@ -912,7 +996,7 @@
           <button class="btn btn-primary" data-role="reserve">Conferir disponibilidade</button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
 
     qsa('.reservation-card').forEach(card => {
       const roomId = card.dataset.roomid;
@@ -932,6 +1016,9 @@
 
       const state = { checkin:null, checkout:null, guests:1, selectedBeds:[], selectedSuites:[], early:false, late:false, transferIn:false, transferOut:false };
 
+      // Update select button initial text
+      selectBedsBtn.textContent = roomId==='q777' ? `Selecionar suítes (${state.selectedSuites.length})` : `Selecionar camas (${state.selectedBeds.length})`;
+
       function updatePriceUI(){
         const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites);
         let extras = 0;
@@ -948,7 +1035,8 @@
         if(!state.checkin || !state.checkout) return false;
         if(parseLocalDate(state.checkout) <= parseLocalDate(state.checkin)) return false;
         if(roomId === 'q777') return state.selectedSuites.length > 0;
-        return state.selectedBeds.length > 0 && state.selectedBeds.length <= state.guests;
+        // New rule: number of selected beds must be equal to number of guests
+        return state.selectedBeds.length === state.guests;
       }
 
       function openSmallCalFor(field){
@@ -956,9 +1044,6 @@
           roomId,
           initialDate: field === 'checkin' ? state.checkin : state.checkout,
           onSelect: (dateStr) => {
-            // New rule: check-in cannot be posterior to check-out.
-            // - If selecting check-in and checkout exists: checkin < checkout required.
-            // - If selecting checkout and checkin exists: checkout > checkin required.
             if(field === 'checkin'){
               if(state.checkout){
                 const sel = parseLocalDate(dateStr);
@@ -990,13 +1075,26 @@
       checkinInput.addEventListener('click', ()=> openSmallCalFor('checkin'));
       checkoutInput.addEventListener('click', ()=> openSmallCalFor('checkout'));
 
-      guestsSelect.addEventListener('change', e => { state.guests = Number(e.target.value); updatePriceUI(); });
+      guestsSelect.addEventListener('change', e => {
+        state.guests = Number(e.target.value);
+        if(state.selectedBeds.length > state.guests){
+          state.selectedBeds = state.selectedBeds.slice(0, state.guests);
+        }
+        selectBedsBtn.textContent = roomId==='q777' ? `Selecionar suítes (${state.selectedSuites.length})` : `Selecionar camas (${state.selectedBeds.length})`;
+        updatePriceUI();
+      });
 
       selectBedsBtn.addEventListener('click', ()=> {
         if(roomId === 'q777'){
           openSuitesModal({ checkin: state.checkin, checkout: state.checkout, preselected: state.selectedSuites, onConfirm: (sel)=> { state.selectedSuites = sel; selectBedsBtn.textContent = `Selecionar suítes (${sel.length})`; updatePriceUI(); } });
         } else {
-          openBedsModal({ roomId, maxBeds: state.guests, preselected: state.selectedBeds, checkin: state.checkin, checkout: state.checkout, onConfirm: (sel)=> { state.selectedBeds = sel; selectBedsBtn.textContent = `Selecionar camas (${sel.length})`; updatePriceUI(); } });
+          openBedsModal({ roomId, maxBeds: state.guests, preselected: state.selectedBeds, checkin: state.checkin, checkout: state.checkout, onConfirm: (sel)=> {
+            state.selectedBeds = sel;
+            selectBedsBtn.textContent = `Selecionar camas (${sel.length})`;
+            updatePriceUI();
+            // small user feedback: briefly pulse the reservation card to show selection applied
+            card.animate([{ boxShadow: '0 0 0 rgba(0,0,0,0)' }, { boxShadow: '0 12px 40px rgba(0,0,0,0.16)' }, { boxShadow: '0 0 0 rgba(0,0,0,0)' }], { duration: 380 });
+          } });
         }
       });
 
@@ -1012,7 +1110,10 @@
         const avail = checkAvailability(roomId, state.checkin, state.checkout);
         if(!avail.isAvailable){ alert('Desculpe, o período contém dias reservados. Escolha outro intervalo.'); return; }
         if(roomId === 'q777' && state.selectedSuites.length===0){ alert('Selecione ao menos uma suíte.'); return; }
-        if(roomId !== 'q777' && state.selectedBeds.length===0){ alert('Selecione ao menos uma cama.'); return; }
+        if(roomId !== 'q777' && state.selectedBeds.length !== state.guests){
+          alert(`Para este quarto é necessário selecionar exatamente ${state.guests} cama(s). Atualmente selecionadas: ${state.selectedBeds.length}.`);
+          return;
+        }
         const nights = Math.ceil((parseLocalDate(state.checkout) - parseLocalDate(state.checkin)) / (1000*60*60*24));
         const bedsText = roomId === 'q777' ? state.selectedSuites.join(', ') : state.selectedBeds.join(', ');
         const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites);
