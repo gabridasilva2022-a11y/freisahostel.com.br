@@ -118,6 +118,12 @@
     .price-summary{background:rgba(255,255,255,0.03);padding:10px;border-radius:8px;margin-top:10px}
     .price-line{display:flex;justify-content:space-between;margin-bottom:6px;color:rgba(255,255,255,0.95)}
 
+    /* Make placeholders and label-like texts inside reservation cards clearly white */
+    .reservation-card .form-group label { color: #fff !important; }
+    .reservation-card [data-role="guestinfo"], .reservation-card [data-role="guestinfo"] * { color: #fff !important; }
+    .reservation-card input::placeholder, .reservation-card textarea::placeholder { color: rgba(255,255,255,0.85) !important; opacity: 1; }
+    .reservation-card input, .reservation-card textarea, .reservation-card select { color: #fff !important; }
+
     /* Small Calendar + Generic modal overlay */
     .overlay{position:fixed;inset:0;background:linear-gradient(180deg, rgba(2,6,23,0.6), rgba(2,6,23,0.6));display:none;align-items:center;justify-content:center;z-index:9999;padding:18px;touch-action:pan-y}
     .overlay.show{display:flex}
@@ -315,7 +321,7 @@
   const ROOM_LABELS = {
     q007: 'Misto',
     ar: 'Feminino',
-    jb: 'Nice',
+    jb: 'Only',
     q777: 'Suíte' // suites remain as-is - we won't rewrite suite labels
   };
 
@@ -379,7 +385,7 @@
   let SHEETS = { calendar:[], pricing:[], rooms:[], beds:[], suites:[], extras:[] };
   function fallbackSheets(){ return {
     calendar: [], pricing: [], rooms: [
-      { room_id: 'jb', name: 'Nice Place', type: 'dorm', max_guests: '14' },
+      { room_id: 'jb', name: 'Only womans (100% feminino)', type: 'dorm', max_guests: '14' },
       { room_id: 'ar', name: 'Quarto Feminino FreiSa', type: 'dorm', max_guests: '14' },
       { room_id: 'q007', name: 'Quarto Misto', type: 'dorm', max_guests: '14' },
       { room_id: 'q777', name: 'Suítes', type: 'suite', max_guests: '3' }
@@ -499,14 +505,14 @@
         'Perfeitas para quem quer combinar o custo-benefício do hostel com o conforto de um quarto privativo a poucos passos da praia.'
     },
     {
-      name: 'Nice Place',
+      name: 'Only womans (100% feminino)',
       roomId: 'jb',
       location: 'Copacabana, RJ',
       beds: '14 camas',
       bathrooms: '2 banheiros',
       images: ['https://i.imgur.com/OddkKoI.jpeg','https://i.imgur.com/W9koWkI.jpeg','https://i.imgur.com/yEaKK3Q.jpeg'],
       description:
-        'Quarto “Nice Place” — ambiente relaxante e bem localizado, ideal para quem busca um ponto de apoio com boa infraestrutura. ' +
+        'Quarto “Only womans” — ambiente 100% feminino, relaxante e bem localizado, ideal para quem busca um ponto de apoio com boa infraestrutura. ' +
         'Próximo a mercados, padarias e transporte público, com acesso a cozinha equipada e áreas comuns. ' +
         'Equipe disponível para suporte e recomendações locais, garantindo uma estadia prática e agradável.'
     }
