@@ -287,6 +287,8 @@
     misto: 'q007',
     feminino: 'ar'
   };
+  // inverse: roomId -> alias prefix
+  const ROOM_ALIAS_BY_ID = { jb: 'only', q777: 'suites', q007: 'misto', ar: 'feminino' };
 
   function normalizeAlias(s){
     if(!s) return null;
@@ -303,15 +305,61 @@
     return ALIAS_MAP[n] || null;
   }
 
-  // given an alias/group (e.g. 'misto' or 'only'), return list of bed ids for that room
+  // Map numbered alias (e.g. "misto1", "feminino3", "only2") to concrete bed id:
+  // numbering: 1 -> C1-T, 2 -> C1-B, 3 -> C2-T, 4 -> C2-B ...
+  // for suites: "suites1" -> S1, etc.
+  function aliasNumberedToResourceId(alias){
+    if(!alias) return null;
+    const n = normalizeAlias(alias);
+    const m = /^([a-z]+)(\d+)$/.exec(n);
+    if(!m) return null;
+    const prefix = m[1];
+    const num = Number(m[2]);
+    const roomId = ALIAS_MAP[prefix];
+    if(!roomId) return null;
+    if(roomId === 'q777'){ // suites group -> map numbers to S1..S3
+      if(num >= 1 && num <= 3) return `S${num}`;
+      return null;
+    }
+    // beds mapping for other rooms
+    // compute bunk group: k = ceil(num/2), pos = odd -> T, even -> B
+    const k = Math.ceil(num / 2);
+    const pos = (num % 2 === 1) ? 'T' : 'B';
+    if(k < 1 || k > 7) return null; // we have C1..C7
+    return `C${k}-${pos}`;
+  }
+
+  // For messages: map concrete resource id back to custom alias (misto1, only2, suites1)
+  function resourceIdToAlias(roomId, resourceId){
+    if(!resourceId) return resourceId || '';
+    const aliasPrefix = ROOM_ALIAS_BY_ID[roomId] || null;
+    if(!aliasPrefix){
+      // fallback: if suite-like or Cx, try simple mapping
+      const suiteMatch = /^S(\d+)$/.exec(resourceId);
+      if(suiteMatch) return `S${suiteMatch[1]}`;
+      return resourceId;
+    }
+    const m = /^C(\d+)-([TB])$/.exec(resourceId);
+    if(m){
+      const group = Number(m[1]);
+      const pos = m[2];
+      const number = pos === 'T' ? (group * 2 - 1) : (group * 2);
+      return `${aliasPrefix}${number}`;
+    }
+    const sm = /^S(\d+)$/.exec(resourceId);
+    if(sm){
+      return `${aliasPrefix}${sm[1]}`; // aliasPrefix should be 'suites' for q777
+    }
+    return resourceId;
+  }
+
   function bedsForRoomId(roomId){
     if(!roomId) return [];
-    if(roomId === 'q777') return []; // suites room doesn't have beds here
+    if(roomId === 'q777') return []; // suites room doesn't have bunk beds here
     const beds = [];
     for(let i=1;i<=7;i++){ beds.push(`C${i}-T`); beds.push(`C${i}-B`); }
     return beds;
   }
-  // suites ids
   function allSuites(){ return ['S1','S2','S3']; }
 
   // CSV parser
@@ -401,7 +449,7 @@
     dates.forEach(d => map[key].add(d));
   }
 
-  // Build reserved maps from sheets, accepting group aliases
+  // Build reserved maps from sheets, accepting group aliases and numbered aliases like "misto1"
   function buildReservedMapsFromSheets(){
     const reservedBeds = {};
     const reservedSuites = {};
@@ -430,67 +478,87 @@
       const rawBed = row.bed_id || row.bed || row.resource || '';
       const rawSuite = row.suite_id || row.suite || '';
 
-      // reserved flag words (if row indicates unavailable)
       const isReservedFlag = ['reserved','booked','blocked','unavailable','ocupado','indisponivel','yes','y','1'].some(s => status.includes(s));
 
-      // Normalize and detect aliases
       const roomAlias = normalizeAlias(rawRoom);
       const bedAlias = normalizeAlias(rawBed);
       const suiteAlias = normalizeAlias(rawSuite);
 
-      // If row indicates a room alias (e.g. 'misto'), map to internal roomId and register as room-level block
+      // room-level alias -> block room
       const mappedRoomId = aliasToRoomId(roomAlias);
       if(mappedRoomId && isReservedFlag){
-        // treat as room-level block
         if(startIso && endIso) addRangeToMap(roomBlockedDates, mappedRoomId, startIso, endIso);
         else if(dateIso) addDateToMap(roomBlockedDates, mappedRoomId, dateIso);
       }
 
-      // Beds: if bed column contains a group alias (e.g. 'misto'/'only'/'feminino') mark all beds for that room
-      if(bedAlias){
-        const mappedFromBedAlias = aliasToRoomId(bedAlias);
-        if(mappedFromBedAlias){
-          // it's a group alias that maps to a room (e.g. 'misto' -> q007)
-          const bedIds = bedsForRoomId(mappedFromBedAlias);
-          markBeds(bedIds, startIso, endIso, dateIso && isReservedFlag ? dateIso : null);
+      // Beds column handling
+      if(rawBed){
+        // try numbered alias first (e.g. "misto1")
+        const numberedResource = aliasNumberedToResourceId(rawBed);
+        if(numberedResource){
+          // numberedResource can be Cx-T or Sx; if Sx treat as suite
+          if(/^S\d+$/.test(numberedResource)){
+            if(startIso && endIso) addRangeToMap(reservedSuites, numberedResource, startIso, endIso);
+            else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, numberedResource, dateIso);
+          } else {
+            if(startIso && endIso) addRangeToMap(reservedBeds, numberedResource, startIso, endIso);
+            else if(dateIso && isReservedFlag) addDateToMap(reservedBeds, numberedResource, dateIso);
+          }
         } else {
-          // bedAlias is not a known group => treat as specific bed id (C1-T or similar)
-          const bedId = rawBed && rawBed.trim();
-          if(bedId){
-            if(startIso && endIso) addRangeToMap(reservedBeds, bedId, startIso, endIso);
-            else if(dateIso && isReservedFlag) addDateToMap(reservedBeds, bedId, dateIso);
+          // not numbered alias: could be group alias (misto) or direct bed id (C2-T)
+          const mappedFromBedAlias = aliasToRoomId(bedAlias);
+          if(mappedFromBedAlias){
+            const bedIds = bedsForRoomId(mappedFromBedAlias);
+            markBeds(bedIds, startIso, endIso, dateIso && isReservedFlag ? dateIso : null);
+          } else {
+            const bedId = rawBed && rawBed.trim();
+            if(bedId){
+              if(startIso && endIso) addRangeToMap(reservedBeds, bedId, startIso, endIso);
+              else if(dateIso && isReservedFlag) addDateToMap(reservedBeds, bedId, dateIso);
+            }
           }
         }
       }
 
-      // Suites: if suite column contains a group alias (e.g. 'suites' or 'q777' or 'S1'), handle accordingly
-      if(suiteAlias){
-        const mappedFromSuiteAlias = aliasToRoomId(suiteAlias);
-        if(mappedFromSuiteAlias === 'q777' || suiteAlias === 'suites'){
-          // group suites => mark all suites
-          const sids = allSuites();
-          markSuites(sids, startIso, endIso, dateIso && isReservedFlag ? dateIso : null);
+      // Suites column handling
+      if(rawSuite){
+        const numberedSuite = aliasNumberedToResourceId(rawSuite);
+        if(numberedSuite){
+          if(startIso && endIso) addRangeToMap(reservedSuites, numberedSuite, startIso, endIso);
+          else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, numberedSuite, dateIso);
         } else {
-          // may be a specific suite id like 'S1'
-          const sid = rawSuite && rawSuite.trim();
-          if(sid){
-            if(startIso && endIso) addRangeToMap(reservedSuites, sid, startIso, endIso);
-            else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, sid, dateIso);
+          const mappedFromSuiteAlias = aliasToRoomId(suiteAlias);
+          if(mappedFromSuiteAlias === 'q777' || suiteAlias === 'suites'){
+            const sids = allSuites();
+            markSuites(sids, startIso, endIso, dateIso && isReservedFlag ? dateIso : null);
+          } else {
+            const sid = rawSuite && rawSuite.trim();
+            if(sid){
+              if(startIso && endIso) addRangeToMap(reservedSuites, sid, startIso, endIso);
+              else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, sid, dateIso);
+            }
           }
         }
       }
     });
 
-    // beds sheet (explicit per-bed rows) - also accept group aliases here
+    // beds sheet: accept group aliases, numbered aliases or explicit bed ids
     SHEETS.beds.forEach(row => {
       const bedRaw = row.bed_id || row.bed || row.id || row.name || '';
       const startIso = tryParseDateToISO(row.checkin || row.start || row.from);
       const endIso = tryParseDateToISO(row.checkout || row.end || row.to);
       const dateIso = tryParseDateToISO(row.date || row.day);
+      if(!bedRaw) return;
+
+      const numbered = aliasNumberedToResourceId(bedRaw);
+      if(numbered){
+        if(startIso && endIso) addRangeToMap(reservedBeds, numbered, startIso, endIso);
+        else if(dateIso) addDateToMap(reservedBeds, numbered, dateIso);
+        return;
+      }
       const alias = normalizeAlias(bedRaw);
       const mapped = aliasToRoomId(alias);
       if(mapped){
-        // group -> mark all beds for that mapped room
         const bedIds = bedsForRoomId(mapped);
         bedIds.forEach(bid => {
           if(startIso && endIso) addRangeToMap(reservedBeds, bid.trim(), startIso, endIso);
@@ -504,12 +572,20 @@
       }
     });
 
-    // suites sheet (explicit per-suite rows) - accept group alias too
+    // suites sheet: accept numbered alias (suites1) or group alias ("suites") or explicit S1
     SHEETS.suites.forEach(row => {
       const suiteRaw = row.suite_id || row.suite || row.id || row.name || '';
       const startIso = tryParseDateToISO(row.checkin || row.start || row.from);
       const endIso = tryParseDateToISO(row.checkout || row.end || row.to);
       const dateIso = tryParseDateToISO(row.date || row.day);
+      if(!suiteRaw) return;
+
+      const numbered = aliasNumberedToResourceId(suiteRaw);
+      if(numbered){
+        if(startIso && endIso) addRangeToMap(reservedSuites, numbered, startIso, endIso);
+        else if(dateIso) addDateToMap(reservedSuites, numbered, dateIso);
+        return;
+      }
       const alias = normalizeAlias(suiteRaw);
       const mapped = aliasToRoomId(alias);
       if(mapped === 'q777' || alias === 'suites'){
@@ -536,7 +612,6 @@
     const s = reservedMap[resourceId];
 
     // When no explicit interval is provided (start or end missing), consider resource available by default.
-    // Availability will only be restricted by explicit dates/ranges declared in the sheets.
     if(!start || !end) return true;
 
     const dates = datesBetween(start, end);
@@ -840,7 +915,9 @@
       const isSelected = selected.includes(bid);
       const imgHtml = `<img src="${BED_BUTTON_IMAGE}" alt="beliche ${bid}" />`;
       const displayLabel = b.label || bedIdToLabel(roomId, bid);
-      return `<div class="bed-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-bed="${bid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${escapeHtml(displayLabel)}</div><div style="font-size:0.85rem">${isReserved ? 'Indisponível' : 'Disponível'}</div></div>`;
+      // Also show custom alias beside label (misto1) for clarity
+      const alias = resourceIdToAlias(roomId, bid);
+      return `<div class="bed-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-bed="${bid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${escapeHtml(displayLabel)}</div><div style="font-size:0.85rem">${escapeHtml(alias)} · ${isReserved ? 'Indisponível' : 'Disponível'}</div></div>`;
     }
 
     function renderBeds(){
@@ -931,7 +1008,8 @@
         const isReserved = reservedSet.has(sid);
         const isSelected = selected.includes(sid);
         const imgHtml = `<img src="${SUITE_BUTTON_IMAGE}" alt="suíte ${sid}" />`;
-        return `<div class="suite-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-suite="${sid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${sid}</div><div style="font-size:0.85rem">${isReserved ? 'Indisponível' : 'Privativa'}</div></div>`;
+        const alias = resourceIdToAlias('q777', sid);
+        return `<div class="suite-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-suite="${sid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${sid}</div><div style="font-size:0.85rem">${alias} · ${isReserved ? 'Indisponível' : 'Privativa'}</div></div>`;
       }).join('');
       modal.querySelector('#suitesCount').textContent = selected.length;
       grid.querySelectorAll('.suite-item').forEach(el=>{
@@ -1024,7 +1102,7 @@
     const today = new Date(); today.setHours(0,0,0,0);
 
     // pick colors for the current room (if configured), otherwise fallback
-    const colors = ROOM_CAL_COLORS && ROOM_CAL_COLORS[calSmallState.roomId] ? ROOM_CAL_COLORS[calSmallState.roomId] : { available:'#e6f6ea', reserved:'#fdecea', textAvailable:'#1e8449', textReserved:'#b91c1c', swatchAvailable:'#e8f7ef', swatchReserved:'#fdecea' };
+    const colors = typeof ROOM_CAL_COLORS !== 'undefined' && ROOM_CAL_COLORS[calSmallState.roomId] ? ROOM_CAL_COLORS[calSmallState.roomId] : { available:'#e6f6ea', reserved:'#fdecea', textAvailable:'#1e8449', textReserved:'#b91c1c', swatchAvailable:'#e8f7ef', swatchReserved:'#fdecea' };
 
     for(let d=1; d<=daysInMonth; d++){
       const dateObj = new Date(year, month, d); dateObj.setHours(0,0,0,0);
@@ -1231,7 +1309,11 @@
         }
 
         const nights = Math.ceil((parseLocalDate(state.checkout) - parseLocalDate(state.checkin)) / (1000*60*60*24));
-        const bedsText = roomId === 'q777' ? state.selectedSuites.join(', ') : state.selectedBeds.map(bid=>bedIdToLabel(roomId, bid)).join(', ');
+        // Build beds/suites text using custom aliases like 'misto1', 'only2', 'suites1'
+        const bedsText = roomId === 'q777'
+          ? state.selectedSuites.map(sid => resourceIdToAlias('q777', sid)).join(', ')
+          : state.selectedBeds.map(bid => resourceIdToAlias(roomId, bid)).join(', ');
+
         const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites);
         let total = baseTotal;
         if(state.early) total += getExtraPrice('early_checkin');
