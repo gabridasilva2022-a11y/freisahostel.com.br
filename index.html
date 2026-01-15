@@ -276,91 +276,34 @@
 
   const ROOM_LABELS = { q007: 'Misto', ar: 'Feminino', jb: 'Only', q777: 'Suíte' };
 
-  // Alias mapping requested:
-  // 'only'  -> jb (Only womans)
-  // 'suites' -> q777 (Suítes)
-  // 'misto' -> q007 (Quarto Misto)
-  // 'feminino' -> ar (Quarto Feminino)
-  const ALIAS_MAP = {
-    only: 'jb',
-    suites: 'q777',
-    misto: 'q007',
-    feminino: 'ar'
+  // Default extras to use when sheet doesn't provide values
+  const DEFAULT_EXTRAS = {
+    early_checkin: 30,
+    late_checkout: 30,
+    transfer_arrival: 150,
+    transfer_departure: 150
   };
-  // inverse: roomId -> alias prefix
-  const ROOM_ALIAS_BY_ID = { jb: 'only', q777: 'suites', q007: 'misto', ar: 'feminino' };
 
-  function normalizeAlias(s){
-    if(!s) return null;
-    let v = String(s).trim().toLowerCase();
-    // remove diacritics
-    v = v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    // common synonyms/spaces
-    v = v.replace(/\s+/g, ' ').trim();
-    return v;
-  }
-  function aliasToRoomId(s){
-    const n = normalizeAlias(s);
-    if(!n) return null;
-    return ALIAS_MAP[n] || null;
-  }
+  // Externalizable styles: edite aqui para mudar a aparência dos cards (exterior)
+  const ROOM_CARD_STYLES = {
+    ar: 'border:1px solid #5d021f; background: linear-gradient(180deg,#3b0b0b,#5d021f); color: #fff;',
+    q007: 'border:1px solid #155e75; background: linear-gradient(180deg,#083344,#0b8793); color:#fff;',
+    q777: 'border:1px solid #6b1e6b; background:linear-gradient(180deg,#4b0a4b,#7b1e7b); color:#fff;',
+    jb: 'border:1px solid #b45309; background:linear-gradient(180deg,#78350f,#b45309); color:#fff;'
+  };
 
-  // Map numbered alias (e.g. "misto1", "feminino3", "only2") to concrete bed id:
-  // numbering: 1 -> C1-T, 2 -> C1-B, 3 -> C2-T, 4 -> C2-B ...
-  // for suites: "suites1" -> S1, etc.
-  function aliasNumberedToResourceId(alias){
-    if(!alias) return null;
-    const n = normalizeAlias(alias);
-    const m = /^([a-z]+)(\d+)$/.exec(n);
-    if(!m) return null;
-    const prefix = m[1];
-    const num = Number(m[2]);
-    const roomId = ALIAS_MAP[prefix];
-    if(!roomId) return null;
-    if(roomId === 'q777'){ // suites group -> map numbers to S1..S3
-      if(num >= 1 && num <= 3) return `S${num}`;
-      return null;
-    }
-    // beds mapping for other rooms
-    // compute bunk group: k = ceil(num/2), pos = odd -> T, even -> B
-    const k = Math.ceil(num / 2);
-    const pos = (num % 2 === 1) ? 'T' : 'B';
-    if(k < 1 || k > 7) return null; // we have C1..C7
-    return `C${k}-${pos}`;
-  }
+  // Externalizable calendar colors
+  const ROOM_CAL_COLORS = {
+    ar: { available:'#fdecea', reserved:'#5d021f', textAvailable:'#5d021f', textReserved:'#ffffff', swatchAvailable:'#feecec', swatchReserved:'#5d021f' },
+    q007: { available:'#e6f6f9', reserved:'#0b8793', textAvailable:'#083344', textReserved:'#ffffff', swatchAvailable:'#e8f7fb', swatchReserved:'#0b8793' },
+    q777: { available:'#f3e8fb', reserved:'#7b1e7b', textAvailable:'#4b0a4b', textReserved:'#ffffff', swatchAvailable:'#f7eefb', swatchReserved:'#7b1e7b' },
+    jb: { available:'#fff7ed', reserved:'#b45309', textAvailable:'#7a2f05', textReserved:'#ffffff', swatchAvailable:'#fff3e0', swatchReserved:'#b45309' }
+  };
 
-  // For messages: map concrete resource id back to custom alias (misto1, only2, suites1)
-  function resourceIdToAlias(roomId, resourceId){
-    if(!resourceId) return resourceId || '';
-    const aliasPrefix = ROOM_ALIAS_BY_ID[roomId] || null;
-    if(!aliasPrefix){
-      // fallback: if suite-like or Cx, try simple mapping
-      const suiteMatch = /^S(\d+)$/.exec(resourceId);
-      if(suiteMatch) return `S${suiteMatch[1]}`;
-      return resourceId;
-    }
-    const m = /^C(\d+)-([TB])$/.exec(resourceId);
-    if(m){
-      const group = Number(m[1]);
-      const pos = m[2];
-      const number = pos === 'T' ? (group * 2 - 1) : (group * 2);
-      return `${aliasPrefix}${number}`;
-    }
-    const sm = /^S(\d+)$/.exec(resourceId);
-    if(sm){
-      return `${aliasPrefix}${sm[1]}`; // aliasPrefix should be 'suites' for q777
-    }
-    return resourceId;
-  }
+  const calSmallState = { roomId: null, currentDate: new Date(), onSelect: null };
 
-  function bedsForRoomId(roomId){
-    if(!roomId) return [];
-    if(roomId === 'q777') return []; // suites room doesn't have bunk beds here
-    const beds = [];
-    for(let i=1;i<=7;i++){ beds.push(`C${i}-T`); beds.push(`C${i}-B`); }
-    return beds;
-  }
-  function allSuites(){ return ['S1','S2','S3']; }
+  // Global reserved maps
+  let RESERVED = { reservedBeds: {}, reservedSuites: {}, roomBlockedDates: {} };
 
   // CSV parser
   function parseCSV(csvText){
@@ -449,157 +392,57 @@
     dates.forEach(d => map[key].add(d));
   }
 
-  // Build reserved maps from sheets, accepting group aliases and numbered aliases like "misto1"
   function buildReservedMapsFromSheets(){
     const reservedBeds = {};
     const reservedSuites = {};
     const roomBlockedDates = {};
 
-    function markBeds(bedIds, startIso, endIso, dateIso){
-      bedIds.forEach(bid => {
-        if(startIso && endIso) addRangeToMap(reservedBeds, bid.trim(), startIso, endIso);
-        else if(dateIso) addDateToMap(reservedBeds, bid.trim(), dateIso);
-      });
-    }
-    function markSuites(suiteIds, startIso, endIso, dateIso){
-      suiteIds.forEach(sid => {
-        if(startIso && endIso) addRangeToMap(reservedSuites, sid.trim(), startIso, endIso);
-        else if(dateIso) addDateToMap(reservedSuites, sid.trim(), dateIso);
-      });
-    }
-
-    // calendar sheet rows
+    // calendar sheet
     SHEETS.calendar.forEach(row => {
       const status = String(row.status || row.availability || row.state || '').toLowerCase();
       const dateIso = tryParseDateToISO(row.date || row.day || row.dt);
       const startIso = tryParseDateToISO(row.checkin || row.start || row.from);
       const endIso = tryParseDateToISO(row.checkout || row.end || row.to);
-      const rawRoom = row.room_id || row.room || row.roomid || row.roomId || '';
-      const rawBed = row.bed_id || row.bed || row.resource || '';
-      const rawSuite = row.suite_id || row.suite || '';
+      const roomId = row.room_id || row.room || row.roomid || row.roomId;
+      const bedId = row.bed_id || row.bed || row.resource;
+      const suiteId = row.suite_id || row.suite || row.suíte;
 
       const isReservedFlag = ['reserved','booked','blocked','unavailable','ocupado','indisponivel','yes','y','1'].some(s => status.includes(s));
 
-      const roomAlias = normalizeAlias(rawRoom);
-      const bedAlias = normalizeAlias(rawBed);
-      const suiteAlias = normalizeAlias(rawSuite);
-
-      // room-level alias -> block room
-      const mappedRoomId = aliasToRoomId(roomAlias);
-      if(mappedRoomId && isReservedFlag){
-        if(startIso && endIso) addRangeToMap(roomBlockedDates, mappedRoomId, startIso, endIso);
-        else if(dateIso) addDateToMap(roomBlockedDates, mappedRoomId, dateIso);
+      if(bedId){
+        if(startIso && endIso) addRangeToMap(reservedBeds, bedId.trim(), startIso, endIso);
+        else if(dateIso && isReservedFlag) addDateToMap(reservedBeds, bedId.trim(), dateIso);
       }
-
-      // Beds column handling
-      if(rawBed){
-        // try numbered alias first (e.g. "misto1")
-        const numberedResource = aliasNumberedToResourceId(rawBed);
-        if(numberedResource){
-          // numberedResource can be Cx-T or Sx; if Sx treat as suite
-          if(/^S\d+$/.test(numberedResource)){
-            if(startIso && endIso) addRangeToMap(reservedSuites, numberedResource, startIso, endIso);
-            else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, numberedResource, dateIso);
-          } else {
-            if(startIso && endIso) addRangeToMap(reservedBeds, numberedResource, startIso, endIso);
-            else if(dateIso && isReservedFlag) addDateToMap(reservedBeds, numberedResource, dateIso);
-          }
-        } else {
-          // not numbered alias: could be group alias (misto) or direct bed id (C2-T)
-          const mappedFromBedAlias = aliasToRoomId(bedAlias);
-          if(mappedFromBedAlias){
-            const bedIds = bedsForRoomId(mappedFromBedAlias);
-            markBeds(bedIds, startIso, endIso, dateIso && isReservedFlag ? dateIso : null);
-          } else {
-            const bedId = rawBed && rawBed.trim();
-            if(bedId){
-              if(startIso && endIso) addRangeToMap(reservedBeds, bedId, startIso, endIso);
-              else if(dateIso && isReservedFlag) addDateToMap(reservedBeds, bedId, dateIso);
-            }
-          }
-        }
+      if(suiteId){
+        if(startIso && endIso) addRangeToMap(reservedSuites, suiteId.trim(), startIso, endIso);
+        else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, suiteId.trim(), dateIso);
       }
-
-      // Suites column handling
-      if(rawSuite){
-        const numberedSuite = aliasNumberedToResourceId(rawSuite);
-        if(numberedSuite){
-          if(startIso && endIso) addRangeToMap(reservedSuites, numberedSuite, startIso, endIso);
-          else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, numberedSuite, dateIso);
-        } else {
-          const mappedFromSuiteAlias = aliasToRoomId(suiteAlias);
-          if(mappedFromSuiteAlias === 'q777' || suiteAlias === 'suites'){
-            const sids = allSuites();
-            markSuites(sids, startIso, endIso, dateIso && isReservedFlag ? dateIso : null);
-          } else {
-            const sid = rawSuite && rawSuite.trim();
-            if(sid){
-              if(startIso && endIso) addRangeToMap(reservedSuites, sid, startIso, endIso);
-              else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, sid, dateIso);
-            }
-          }
-        }
+      if(roomId && isReservedFlag){
+        if(startIso && endIso) addRangeToMap(roomBlockedDates, roomId.trim(), startIso, endIso);
+        else if(dateIso) addDateToMap(roomBlockedDates, roomId.trim(), dateIso);
       }
     });
 
-    // beds sheet: accept group aliases, numbered aliases or explicit bed ids
+    // beds sheet
     SHEETS.beds.forEach(row => {
-      const bedRaw = row.bed_id || row.bed || row.id || row.name || '';
+      const bedId = row.bed_id || row.bed || row.id || row.name;
       const startIso = tryParseDateToISO(row.checkin || row.start || row.from);
       const endIso = tryParseDateToISO(row.checkout || row.end || row.to);
       const dateIso = tryParseDateToISO(row.date || row.day);
-      if(!bedRaw) return;
-
-      const numbered = aliasNumberedToResourceId(bedRaw);
-      if(numbered){
-        if(startIso && endIso) addRangeToMap(reservedBeds, numbered, startIso, endIso);
-        else if(dateIso) addDateToMap(reservedBeds, numbered, dateIso);
-        return;
-      }
-      const alias = normalizeAlias(bedRaw);
-      const mapped = aliasToRoomId(alias);
-      if(mapped){
-        const bedIds = bedsForRoomId(mapped);
-        bedIds.forEach(bid => {
-          if(startIso && endIso) addRangeToMap(reservedBeds, bid.trim(), startIso, endIso);
-          else if(dateIso) addDateToMap(reservedBeds, bid.trim(), dateIso);
-        });
-      } else {
-        const bedId = bedRaw && bedRaw.trim();
-        if(!bedId) return;
-        if(startIso && endIso) addRangeToMap(reservedBeds, bedId, startIso, endIso);
-        else if(dateIso) addDateToMap(reservedBeds, bedId, dateIso);
-      }
+      if(!bedId) return;
+      if(startIso && endIso) addRangeToMap(reservedBeds, bedId.trim(), startIso, endIso);
+      else if(dateIso) addDateToMap(reservedBeds, bedId.trim(), dateIso);
     });
 
-    // suites sheet: accept numbered alias (suites1) or group alias ("suites") or explicit S1
+    // suites sheet
     SHEETS.suites.forEach(row => {
-      const suiteRaw = row.suite_id || row.suite || row.id || row.name || '';
+      const suiteId = row.suite_id || row.suite || row.id || row.name;
       const startIso = tryParseDateToISO(row.checkin || row.start || row.from);
       const endIso = tryParseDateToISO(row.checkout || row.end || row.to);
       const dateIso = tryParseDateToISO(row.date || row.day);
-      if(!suiteRaw) return;
-
-      const numbered = aliasNumberedToResourceId(suiteRaw);
-      if(numbered){
-        if(startIso && endIso) addRangeToMap(reservedSuites, numbered, startIso, endIso);
-        else if(dateIso) addDateToMap(reservedSuites, numbered, dateIso);
-        return;
-      }
-      const alias = normalizeAlias(suiteRaw);
-      const mapped = aliasToRoomId(alias);
-      if(mapped === 'q777' || alias === 'suites'){
-        const sids = allSuites();
-        sids.forEach(sid => {
-          if(startIso && endIso) addRangeToMap(reservedSuites, sid.trim(), startIso, endIso);
-          else if(dateIso) addDateToMap(reservedSuites, sid.trim(), dateIso);
-        });
-      } else {
-        const sid = suiteRaw && suiteRaw.trim();
-        if(!sid) return;
-        if(startIso && endIso) addRangeToMap(reservedSuites, sid, startIso, endIso);
-        else if(dateIso) addDateToMap(reservedSuites, sid, dateIso);
-      }
+      if(!suiteId) return;
+      if(startIso && endIso) addRangeToMap(reservedSuites, suiteId.trim(), startIso, endIso);
+      else if(dateIso) addDateToMap(reservedSuites, suiteId.trim(), dateIso);
     });
 
     RESERVED = { reservedBeds, reservedSuites, roomBlockedDates };
@@ -610,15 +453,49 @@
   function isResourceFreeForRange(reservedMap, resourceId, start, end){
     if(!resourceId) return true;
     const s = reservedMap[resourceId];
-
-    // When no explicit interval is provided (start or end missing), consider resource available by default.
-    if(!start || !end) return true;
-
+    if(!start || !end) return !(s && s.size > 0);
     const dates = datesBetween(start, end);
     if(!dates.length) return true;
     if(!s) return true;
     for(const d of dates) if(s.has(d)) return false;
     return true;
+  }
+
+  // Provide bed list for a room. If SHEETS.beds has data, prefer that.
+  // This function now guarantees a stable list of 14 beds for dorms and uses prefix names:
+  // q007 -> misto1..misto14, ar -> feminino1..feminino14, jb -> only1..only14
+  function getBedsForRoom(roomId){
+    // prefer sheet data if present and contains room mapping
+    if(SHEETS && Array.isArray(SHEETS.beds) && SHEETS.beds.length){
+      const rows = SHEETS.beds.filter(r => {
+        const rr = (r.room_id || r.room || r.roomid || r.roomId || '').trim();
+        return rr && String(rr) === String(roomId);
+      });
+      if(rows.length){
+        // map each row to {id,label}
+        return rows.map((row, idx) => {
+          const id = (row.bed_id || row.bed || row.id || row.name || (`${roomId}-${idx+1}`)).trim();
+          const label = (row.label || row.name || row.bed || row.bed_id || id).trim();
+          return { id, label };
+        });
+      }
+    }
+
+    // fallback: build ids using readable prefixes that match the spreadsheet expectation:
+    // - q007 (misto) => misto1 .. misto14
+    // - ar (feminino) => feminino1 .. feminino14
+    // - jb (only) => only1 .. only14
+    const prefixMap = { q007: 'misto', ar: 'feminino', jb: 'only' };
+    const prefix = prefixMap[roomId] || (roomId === 'q777' ? '' : (`${roomId}`));
+    if(roomId === 'q777') return []; // suites handled elsewhere
+    const beds = [];
+    for(let i=1;i<=14;i++){
+      const id = `${prefix}${i}`;
+      // label kept user-friendly; bedIdToLabel will render human-friendly when needed.
+      const label = `${id}`;
+      beds.push({ id, label });
+    }
+    return beds;
   }
 
   function checkAvailability(roomId, checkin, checkout){
@@ -632,11 +509,19 @@
     }
 
     if(roomId === 'q777'){
-      const allS = allSuites();
-      const availableSuites = allS.filter(sid => isResourceFreeForRange(reservedSuites, sid, checkin, checkout));
+      const allSuites = [];
+      if(SHEETS && Array.isArray(SHEETS.suites) && SHEETS.suites.length){
+        SHEETS.suites.forEach(r => {
+          const sid = (r.suite_id || r.suite || r.id || r.name || '').trim();
+          if(sid) allSuites.push(sid);
+        });
+      }
+      if(allSuites.length === 0) allSuites.push('S1','S2','S3');
+      const availableSuites = allSuites.filter(sid => isResourceFreeForRange(reservedSuites, sid, checkin, checkout));
       return { availableBeds: [], availableSuites, isAvailable: availableSuites.length > 0 };
     } else {
-      const allBeds = bedsForRoomId(roomId);
+      const allBedsObjs = getBedsForRoom(roomId);
+      const allBeds = allBedsObjs.map(b=>b.id);
       const availableBeds = allBeds.filter(bid => isResourceFreeForRange(reservedBeds, bid, checkin, checkout));
       return { availableBeds, availableSuites: [], isAvailable: availableBeds.length > 0 };
     }
@@ -648,17 +533,25 @@
     const { reservedBeds, reservedSuites, roomBlockedDates } = RESERVED;
     if(roomBlockedDates[roomId] && roomBlockedDates[roomId].has(dateIso)) return false;
     if(roomId === 'q777'){
-      const allS = allSuites();
-      for(const s of allS){
+      const allSuites = [];
+      if(SHEETS && Array.isArray(SHEETS.suites) && SHEETS.suites.length){
+        SHEETS.suites.forEach(r => {
+          const sid = (r.suite_id || r.suite || r.id || r.name || '').trim();
+          if(sid) allSuites.push(sid);
+        });
+      }
+      if(allSuites.length === 0) allSuites.push('S1','S2','S3');
+      for(const s of allSuites){
         const sset = reservedSuites[s];
         if(!sset || !sset.has(dateIso)) return true;
       }
       return false;
     } else {
-      const allB = bedsForRoomId(roomId);
-      for(const b of allB){
-        const bset = reservedBeds[b];
-        if(!bset || !bset.has(dateIso)) return true;
+      const allBedsObjs = getBedsForRoom(roomId);
+      // look through generated bed ids (prefix1..prefix14)
+      for(const bed of allBedsObjs){
+        const s = reservedBeds[bed.id];
+        if(!s || !s.has(dateIso)) return true;
       }
       return false;
     }
@@ -668,7 +561,7 @@
     const priceKeys = { jb: 'base_price_nice_place', ar: 'base_price_quarto_feminino', q007: 'base_price_quarto_misto', q777: 'base_price_suites' };
     const key = priceKeys[roomId];
     if (!key) return 100;
-    const extra = SHEETS.extras.find(e => e.key === key);
+    const extra = (SHEETS.extras || []).find(e => e.key === key);
     return extra ? parseFloat(extra.price) : 100;
   }
 
@@ -681,7 +574,7 @@
       if(roomId === 'q777') return 1000;
       if(['jb','q007','ar'].includes(roomId)) return 500;
     }
-    const priceRow = SHEETS.pricing.find(p => p.room_id === roomId && p.date === dateStr);
+    const priceRow = (SHEETS.pricing || []).find(p => p.room_id === roomId && p.date === dateStr);
     return priceRow ? parseFloat(priceRow.price) : getBasePrice(roomId);
   }
 
@@ -697,14 +590,22 @@
       d.setDate(d.getDate() + i);
       const dateStr = formatLocalDateJS(d);
       const pricePerUnit = getPriceForDate(roomId, dateStr);
-      let nightTotal = roomId === 'q777' ? pricePerUnit * selectedSuites.length : pricePerUnit * guests;
+      // For dorms (non-suite) assume pricePerUnit is per person => multiply by guests
+      // For suites assume pricePerUnit is per suite => multiply by number of selected suites (or 1 if none selected)
+      let nightTotal = roomId === 'q777' ? pricePerUnit * (selectedSuites.length || 1) : pricePerUnit * guests;
       nightlyPrices.push({ date: dateStr, price: pricePerUnit, total: nightTotal });
       baseTotal += nightTotal;
     }
     return { nightlyPrices, baseTotal };
   }
 
-  function getExtraPrice(key){ const r = SHEETS.extras.find(e => e.key === key); return r ? parseFloat(r.price) : 0; }
+  // get extra price, falling back to DEFAULT_EXTRAS when sheet value is missing
+  function getExtraPrice(key){
+    if(!key) return 0;
+    const r = (SHEETS.extras || []).find(e => e.key === key);
+    if(r && r.price) return parseFloat(r.price);
+    return DEFAULT_EXTRAS[key] || 0;
+  }
 
   const bedSvg = `<svg viewBox="0 0 24 24" width="34" height="22" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="8" width="20" height="8" rx="1.5" stroke="#111" stroke-width="1.2" fill="none"/><path d="M4 16v2" stroke="#111" stroke-width="1.2" stroke-linecap="round"/><path d="M20 16v2" stroke="#111" stroke-width="1.2" stroke-linecap="round"/><rect x="4" y="9" width="6" height="3" rx="1" fill="#111" opacity="0.08"/></svg>`;
   const suiteSvg = `<svg viewBox="0 0 24 24" width="48" height="36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="6" width="20" height="12" rx="2" stroke="#111" stroke-width="1.2" fill="none"/><circle cx="7" cy="12" r="1.5" fill="#111" /><rect x="12" y="9" width="6" height="6" rx="1" fill="#111" opacity="0.06" /></svg>`;
@@ -714,12 +615,25 @@
 
   function bedIdToLabel(roomId, bedId){
     if(!bedId) return bedId;
-    const labelBase = ROOM_LABELS[roomId] || ROOM_LABELS['jb'] || 'Cama';
-    const m = /^C(\d+)-([TB])$/.exec(bedId);
-    if(!m) return bedId;
-    const idx = Number(m[1]); const pos = m[2];
-    const number = pos === 'T' ? (idx * 2 - 1) : (idx * 2);
-    return `${labelBase} ${number}`;
+    const mm = /^misto(\d+)$/i.exec(bedId);
+    if(mm) return `Misto ${mm[1]}`;
+    const mf = /^feminino(\d+)$/i.exec(bedId);
+    if(mf) return `Feminino ${mf[1]}`;
+    const mo = /^(only)(\d+)$/i.exec(bedId);
+    if(mo) return `Only ${mo[2]}`;
+    const mC = /^C(\d+)-([TB])$/.exec(bedId);
+    if(mC){
+      const idx = Number(mC[1]); const pos = mC[2];
+      const number = pos === 'T' ? (idx * 2 - 1) : (idx * 2);
+      return `${ROOM_LABELS[roomId] || 'Cama'} ${number}`;
+    }
+    const simple = /([A-Za-z]+)(\d+)/.exec(bedId);
+    if(simple) {
+      // capitalize prefix for display
+      const prefix = simple[1].charAt(0).toUpperCase() + simple[1].slice(1).toLowerCase();
+      return `${prefix} ${simple[2]}`;
+    }
+    return bedId;
   }
 
   function formatLocalDateJS(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
@@ -728,7 +642,7 @@
   function escapeHtml(str){ if(!str) return ''; return String(str).replace(/[&<>"]/g, function(tag){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[tag]); }); }
   function formatCurrency(v){ const n = Number(v || 0); return 'R$ ' + n.toFixed(2).replace('.', ','); }
 
-  // Static room data with requested name/image changes
+  // Static room data
   const staticRooms = [
     {
       name: 'Quarto Feminino FreiSa',
@@ -795,7 +709,7 @@
   function saveRoomDesc(roomId, desc){ try{ const map = loadSavedRoomDescs(); map[roomId] = desc; localStorage.setItem(ROOM_DESCS_KEY, JSON.stringify(map)); }catch(e){ console.warn(e); } }
   function applySavedRoomDescs(){ const map = loadSavedRoomDescs(); if(!map) return; staticRooms.forEach(r => { if(map[r.roomId]) r.description = map[r.roomId]; }); }
 
-  // Rendering functions (rooms grid, lightbox, modals, reservation cards)
+  // Rendering functions
   function renderBenefits(){ const container = qs('#benefitsGrid'); if(!container) return; const benefits = [ { icon:'📍', title:'Localização Estratégica', text:'Em Copacabana, perto de tudo que você precisa' },{ icon:'💰', title:'Custo-Benefício', text:'Preços justos para uma experiência incrível' },{ icon:'🔒', title:'Conforto e Segurança', text:'Sua estadia tranquila é nossa prioridade' },{ icon:'🤝', title:'Ambiente Social', text:'Conheça viajantes do mundo todo' },{ icon:'🍳', title:'Estrutura Prática', text:'Cozinha compartilhada e áreas comuns' },{ icon:'🌳', title:'Experiência Carioca', text:'Viva o Rio de Janeiro autenticamente' } ]; container.innerHTML = benefits.map(b=>`<div class="benefit-card"><div class="benefit-icon" aria-hidden="true">${b.icon}</div><h3>${b.title}</h3><p>${b.text}</p></div>`).join(''); }
 
   function renderTestimonials(){ const container = qs('#testimonialsGrid'); if(!container) return; const testimonials=[ { text:'Fiquei 4 noites em Copacabana. Localização excelente...', name:'Hóspede', location:'Brasil' },{ text:'Minha hospedagem foi super tranquila...', name:'Hóspede', location:'Internacional' },{ text:'Localização excelente; o proprietário estava disponível...', name:'Hóspede', location:'São Paulo' } ]; container.innerHTML = testimonials.map(t=>`<div class="testimonial-card"><div class="testimonial-text">"${t.text}"</div><div style="margin-top:8px">🌟🌟🌟🌟🌟</div><div class="testimonial-author"><div class="author-avatar">${t.name[0]}</div><div><div style="font-weight:700">${t.name}</div><div style="color:var(--muted)">${t.location}</div></div></div></div>`).join(''); }
@@ -865,18 +779,39 @@
     overlay.classList.add('show'); overlay.setAttribute('aria-hidden','false');
 
     const avail = checkAvailability(roomId, checkin, checkout);
-    const topBeds = [];
-    const bottomBeds = [];
-    const roomLabel = ROOM_LABELS[roomId] || ROOM_LABELS['jb'] || 'Cama';
-    for (let i=1;i<=7;i++){
-      const topId = `C${i}-T`; const bottomId = `C${i}-B`;
-      const topNum = i * 2 - 1; const bottomNum = i * 2;
-      topBeds.push({ id: topId, label: `${roomLabel} ${topNum}` });
-      bottomBeds.push({ id: bottomId, label: `${roomLabel} ${bottomNum}` });
+    const bedObjs = getBedsForRoom(roomId) || [];
+
+    // Build top (odd-numbered) and bottom (even-numbered) lists based on numeric suffix
+    const topBeds = [], bottomBeds = [];
+    if(bedObjs.length){
+      bedObjs.forEach(b => {
+        // extract trailing number
+        const m = String(b.id).match(/(\d+)$/);
+        const n = m ? Number(m[1]) : null;
+        if(n !== null){
+          if(n % 2 === 1) topBeds.push({ id: b.id, label: b.label });
+          else bottomBeds.push({ id: b.id, label: b.label });
+        } else {
+          // fallback if no numeric suffix: alternate assignment to preserve top/bottom balance
+          if(topBeds.length <= bottomBeds.length) topBeds.push({ id: b.id, label: b.label });
+          else bottomBeds.push({ id: b.id, label: b.label });
+        }
+      });
+    } else {
+      // legacy fallback (shouldn't happen because getBedsForRoom returns fallback)
+      const prefixMap = { q007: 'misto', ar: 'feminino', jb: 'only' };
+      const prefix = prefixMap[roomId] || `${roomId}`;
+      for (let i=1;i<=14;i++){
+        const id = `${prefix}${i}`;
+        const label = `${id}`;
+        if(i % 2 === 1) topBeds.push({ id, label });
+        else bottomBeds.push({ id, label });
+      }
     }
 
-    const allBeds = topBeds.map(b=>b.id).concat(bottomBeds.map(b=>b.id));
-    const reservedSet = new Set(allBeds.filter(bid => !(avail.availableBeds || []).includes(bid)));
+    const allBeds = topBeds.concat(bottomBeds).map(b=>b.id);
+    const availableSet = new Set(avail.availableBeds || []);
+    const reservedSet = new Set(allBeds.filter(bid => !availableSet.has(bid)));
 
     let selected = Array.from(preselected || []).slice(0, maxBeds);
 
@@ -893,9 +828,9 @@
       </div>
       <div class="modal-body">
         <div style="color:var(--muted);margin-bottom:8px">Selecione exatamente ${maxBeds} cama(s). ${checkin && checkout ? `Período: ${formatBR(checkin)} — ${formatBR(checkout)}` : ''}</div>
-        <div style="font-weight:700;margin-top:6px">Camas — Superior (7)</div>
+        <div style="font-weight:700;margin-top:6px">Camas — Superior (ímpares)</div>
         <div class="beds-grid" id="bedsGridTop"></div>
-        <div style="font-weight:700;margin-top:12px">Camas — Inferior (7)</div>
+        <div style="font-weight:700;margin-top:12px">Camas — Inferior (pares)</div>
         <div class="beds-grid" id="bedsGridBottom"></div>
       </div>
       <div class="modal-footer">
@@ -914,10 +849,9 @@
       const isReserved = reservedSet.has(bid);
       const isSelected = selected.includes(bid);
       const imgHtml = `<img src="${BED_BUTTON_IMAGE}" alt="beliche ${bid}" />`;
-      const displayLabel = b.label || bedIdToLabel(roomId, bid);
-      // Also show custom alias beside label (misto1) for clarity
-      const alias = resourceIdToAlias(roomId, bid);
-      return `<div class="bed-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-bed="${bid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${escapeHtml(displayLabel)}</div><div style="font-size:0.85rem">${escapeHtml(alias)} · ${isReserved ? 'Indisponível' : 'Disponível'}</div></div>`;
+      // Prefer a human-friendly label for display:
+      const displayLabel = (b.label && b.label !== bid) ? b.label : bedIdToLabel(roomId, bid);
+      return `<div class="bed-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-bed="${bid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${escapeHtml(displayLabel)}</div><div style="font-size:0.85rem">${isReserved ? 'Indisponível' : 'Disponível'}</div></div>`;
     }
 
     function renderBeds(){
@@ -974,7 +908,14 @@
     overlay.classList.add('show'); overlay.setAttribute('aria-hidden','false');
 
     const avail = checkAvailability('q777', checkin, checkout);
-    const allS = allSuites();
+    const allS = [];
+    if(SHEETS && Array.isArray(SHEETS.suites) && SHEETS.suites.length){
+      SHEETS.suites.forEach(r => {
+        const sid = (r.suite_id || r.suite || r.id || r.name || '').trim();
+        if(sid) allS.push(sid);
+      });
+    }
+    if(allS.length === 0) allS.push('S1','S2','S3');
     const reservedSet = new Set(allS.filter(sid => !(avail.availableSuites || []).includes(sid)));
 
     let selected = Array.from(preselected || []);
@@ -1008,8 +949,7 @@
         const isReserved = reservedSet.has(sid);
         const isSelected = selected.includes(sid);
         const imgHtml = `<img src="${SUITE_BUTTON_IMAGE}" alt="suíte ${sid}" />`;
-        const alias = resourceIdToAlias('q777', sid);
-        return `<div class="suite-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-suite="${sid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${sid}</div><div style="font-size:0.85rem">${alias} · ${isReserved ? 'Indisponível' : 'Privativa'}</div></div>`;
+        return `<div class="suite-item ${isReserved ? 'reserved' : ''} ${isSelected ? 'selected' : ''}" data-suite="${sid}" ${isReserved ? 'aria-disabled="true"' : 'role="button"'}>${imgHtml}<div style="font-weight:700">${sid}</div><div style="font-size:0.85rem">${isReserved ? 'Indisponível' : 'Privativa'}</div></div>`;
       }).join('');
       modal.querySelector('#suitesCount').textContent = selected.length;
       grid.querySelectorAll('.suite-item').forEach(el=>{
@@ -1101,8 +1041,7 @@
 
     const today = new Date(); today.setHours(0,0,0,0);
 
-    // pick colors for the current room (if configured), otherwise fallback
-    const colors = typeof ROOM_CAL_COLORS !== 'undefined' && ROOM_CAL_COLORS[calSmallState.roomId] ? ROOM_CAL_COLORS[calSmallState.roomId] : { available:'#e6f6ea', reserved:'#fdecea', textAvailable:'#1e8449', textReserved:'#b91c1c', swatchAvailable:'#e8f7ef', swatchReserved:'#fdecea' };
+    const colors = ROOM_CAL_COLORS[calSmallState.roomId] || { available:'#e6f6ea', reserved:'#fdecea', textAvailable:'#1e8449', textReserved:'#b91c1c', swatchAvailable:'#e8f7ef', swatchReserved:'#fdecea' };
 
     for(let d=1; d<=daysInMonth; d++){
       const dateObj = new Date(year, month, d); dateObj.setHours(0,0,0,0);
@@ -1147,7 +1086,7 @@
     }
   }
 
-  // reservation cards render & interactivity (keeps previous behavior but uses checkAvailability)
+  // reservation cards render & interactivity
   function renderReservationCards(){
     const container = qs('#reservationCards');
     if(!container) return;
@@ -1176,13 +1115,13 @@
         <div data-role="guestinfo" style="margin-top:12px"></div>
 
         <div style="margin-top:8px;color:var(--muted)">
-          <label style="display:block;color:rgba(255,255,255,0.95)"><input type="checkbox" data-role="early" /> Check-in antecipado (+${formatCurrency(getExtraPrice('early_checkin')||30)})</label>
-          <label style="display:block;color:rgba(255,255,255,0.95)"><input type="checkbox" data-role="late" /> Check-out estendido (+${formatCurrency(getExtraPrice('late_checkout')||30)})</label>
+          <label style="display:block;color:rgba(255,255,255,0.95)"><input type="checkbox" data-role="early" /> Check-in antecipado (+${formatCurrency(getExtraPrice('early_checkin'))})</label>
+          <label style="display:block;color:rgba(255,255,255,0.95)"><input type="checkbox" data-role="late" /> Check-out estendido (+${formatCurrency(getExtraPrice('late_checkout'))})</label>
         </div>
 
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-          <button class="transfer-btn" data-role="transfer-in">Transfer ida Aeroporto x Hostel (${formatCurrency(getExtraPrice('transfer_arrival')||150)})</button>
-          <button class="transfer-btn" data-role="transfer-out">Transfer volta Hostel x Aeroporto (${formatCurrency(getExtraPrice('transfer_departure')||150)})</button>
+          <button class="transfer-btn" data-role="transfer-in">Transfer ida Aeroporto x Hostel (${formatCurrency(getExtraPrice('transfer_arrival'))})</button>
+          <button class="transfer-btn" data-role="transfer-out">Transfer volta Hostel x Aeroporto (${formatCurrency(getExtraPrice('transfer_departure'))})</button>
         </div>
 
         <div class="price-summary" style="margin-top:12px">
@@ -1197,7 +1136,7 @@
       </div>
     `}).join('');
 
-    // Attach behavior (same logic as previous long implementation)
+    // Attach behavior
     qsa('.reservation-card').forEach(card => {
       const roomId = card.dataset.roomid;
       const roomObj = staticRooms.find(s => s.roomId === roomId);
@@ -1260,7 +1199,17 @@
         });
       }
 
-      function updatePriceUI(){ const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites); let extras = 0; if (state.early) extras += getExtraPrice('early_checkin'); if (state.late) extras += getExtraPrice('late_checkout'); if (state.transferIn) extras += getExtraPrice('transfer_arrival'); if (state.transferOut) extras += getExtraPrice('transfer_departure'); baseEl.textContent = formatCurrency(baseTotal || 0); extrasEl.textContent = formatCurrency(extras || 0); totalEl.textContent = formatCurrency((baseTotal || 0) + extras); }
+      function updatePriceUI(){ const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites); let extras = 0;
+        // early/late are charged per person
+        if (state.early) extras += (getExtraPrice('early_checkin') || 0) * state.guests;
+        if (state.late) extras += (getExtraPrice('late_checkout') || 0) * state.guests;
+        // transfers considered per reservation
+        if (state.transferIn) extras += getExtraPrice('transfer_arrival') || 0;
+        if (state.transferOut) extras += getExtraPrice('transfer_departure') || 0;
+        baseEl.textContent = formatCurrency(baseTotal || 0);
+        extrasEl.textContent = formatCurrency(extras || 0);
+        totalEl.textContent = formatCurrency((baseTotal || 0) + extras);
+      }
 
       function openSmallCalFor(field){ openCalendarSmall({ roomId, initialDate: field === 'checkin' ? state.checkin : state.checkout, onSelect: (dateStr) => { if(field === 'checkin'){ if(state.checkout){ const sel = parseLocalDate(dateStr); const co = parseLocalDate(state.checkout); if(sel >= co){ alert('Check-in não pode ser igual ou posterior ao check-out. Escolha uma data anterior ao check-out.'); return; } } state.checkin = dateStr; checkinInput.value = formatBR(dateStr); } else { if(state.checkin){ const sel = parseLocalDate(dateStr); const ci = parseLocalDate(state.checkin); if(sel <= ci){ alert('Check-out deve ser posterior ao check-in. Escolha uma data posterior ao check-in.'); return; } } state.checkout = dateStr; checkoutInput.value = formatBR(dateStr); } updatePriceUI(); } }); }
 
@@ -1309,24 +1258,20 @@
         }
 
         const nights = Math.ceil((parseLocalDate(state.checkout) - parseLocalDate(state.checkin)) / (1000*60*60*24));
-        // Build beds/suites text using custom aliases like 'misto1', 'only2', 'suites1'
-        const bedsText = roomId === 'q777'
-          ? state.selectedSuites.map(sid => resourceIdToAlias('q777', sid)).join(', ')
-          : state.selectedBeds.map(bid => resourceIdToAlias(roomId, bid)).join(', ');
-
+        const bedsText = roomId === 'q777' ? state.selectedSuites.join(', ') : state.selectedBeds.map(bid=>bedIdToLabel(roomId, bid)).join(', ');
         const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites);
         let total = baseTotal;
-        if(state.early) total += getExtraPrice('early_checkin');
-        if(state.late) total += getExtraPrice('late_checkout');
-        if(state.transferIn) total += getExtraPrice('transfer_arrival');
-        if(state.transferOut) total += getExtraPrice('transfer_departure');
+        if(state.early) total += (getExtraPrice('early_checkin') || 0) * state.guests;
+        if(state.late) total += (getExtraPrice('late_checkout') || 0) * state.guests;
+        if(state.transferIn) total += getExtraPrice('transfer_arrival') || 0;
+        if(state.transferOut) total += getExtraPrice('transfer_departure') || 0;
 
         const roomName = roomObj ? roomObj.name : roomId;
         let message = `Olá! Gostaria de solicitar reserva para ${roomName}.\n\n📅 Check-in: ${formatBR(state.checkin)}\n📅 Check-out: ${formatBR(state.checkout)}\n🌙 Noites: ${nights}\n👥 Hóspedes: ${state.guests}\n${roomId==='q777'?'🏠 Suítes':'🛏️ Camas'}: ${bedsText}\n\n👤 Dados dos hóspedes:\n`;
         state.guestInfo.forEach((g, idx) => { message += `- ${idx+1}. ${g.name} — ${g.id}\n`; });
         message += `\n💰 Resumo:\n- Valor base: ${formatCurrency(baseTotal)}`;
-        if(state.early) message += `\n- Check-in antecipado: ${formatCurrency(getExtraPrice('early_checkin'))}`;
-        if(state.late) message += `\n- Check-out estendido: ${formatCurrency(getExtraPrice('late_checkout'))}`;
+        if(state.early) message += `\n- Check-in antecipado (por pessoa): ${formatCurrency(getExtraPrice('early_checkin'))} × ${state.guests} = ${formatCurrency((getExtraPrice('early_checkin')||0) * state.guests)}`;
+        if(state.late) message += `\n- Check-out estendido (por pessoa): ${formatCurrency(getExtraPrice('late_checkout'))} × ${state.guests} = ${formatCurrency((getExtraPrice('late_checkout')||0) * state.guests)}`;
         if(state.transferIn) message += `\n- Transfer ida: ${formatCurrency(getExtraPrice('transfer_arrival'))}`;
         if(state.transferOut) message += `\n- Transfer volta: ${formatCurrency(getExtraPrice('transfer_departure'))}`;
         message += `\n\n💵 Total: ${formatCurrency(total)}\n\nObrigado!`;
@@ -1337,7 +1282,7 @@
     });
   }
 
-  // loadSheets implementation with reserved map build and caching
+  // loadSheets implementation
   async function loadSheets(){
     const cached = getCached();
     if(cached){ SHEETS = cached; applySavedRoomDescs(); buildReservedMapsFromSheets(); renderAll(); refreshSheets(); return }
@@ -1369,22 +1314,6 @@
 
   function fallbackSheets(){ return { calendar: [], pricing: [], rooms: [], beds: [], suites: [], extras: [] }; }
 
-  // minimal ROOM_CAL_COLORS & ROOM_CARD_STYLES kept (editable)
-  const ROOM_CARD_STYLES = {
-    ar: 'border:1px solid #5d021f; background: linear-gradient(180deg,#3b0b0b,#5d021f); color: #fff;',
-    q007: 'border:1px solid #155e75; background: linear-gradient(180deg,#083344,#0b8793); color:#fff;',
-    q777: 'border:1px solid #6b1e6b; background:linear-gradient(180deg,#4b0a4b,#7b1e7b); color:#fff;',
-    jb: 'border:1px solid #b45309; background:linear-gradient(180deg,#78350f,#b45309); color:#fff;'
-  };
-  const ROOM_CAL_COLORS = {
-    ar: { available:'#fdecea', reserved:'#5d021f', textAvailable:'#5d021f', textReserved:'#ffffff', swatchAvailable:'#feecec', swatchReserved:'#5d021f' },
-    q007: { available:'#e6f6f9', reserved:'#0b8793', textAvailable:'#083344', textReserved:'#ffffff', swatchAvailable:'#e8f7fb', swatchReserved:'#0b8793' },
-    q777: { available:'#f3e8fb', reserved:'#7b1e7b', textAvailable:'#4b0a4b', textReserved:'#ffffff', swatchAvailable:'#f7eefb', swatchReserved:'#7b1e7b' },
-    jb: { available:'#fff7ed', reserved:'#b45309', textAvailable:'#7a2f05', textReserved:'#ffffff', swatchAvailable:'#fff3e0', swatchReserved:'#b45309' }
-  };
-
-  function renderBenefits(){ const c = qs('#benefitsGrid'); if(!c) return; const b=[{icon:'📍',title:'Localização Estratégica',text:'Em Copacabana, perto de tudo que você precisa'},{icon:'💰',title:'Custo-Benefício',text:'Preços justos para uma experiência incrível'},{icon:'🔒',title:'Conforto e Segurança',text:'Sua estadia tranquila é nossa prioridade'},{icon:'🤝',title:'Ambiente Social',text:'Conheça viajantes do mundo todo'},{icon:'🍳',title:'Estrutura Prática',text:'Cozinha compartilhada e áreas comuns'},{icon:'🌳',title:'Experiência Carioca',text:'Viva o Rio de Janeiro autenticamente'}]; c.innerHTML = b.map(x=>`<div class="benefit-card"><div class="benefit-icon" aria-hidden="true">${x.icon}</div><h3>${x.title}</h3><p>${x.text}</p></div>`).join(''); }
-  function renderTestimonials(){ const c = qs('#testimonialsGrid'); if(!c) return; const t=[{text:'Fiquei 4 noites em Copacabana. Localização excelente...',name:'Hóspede',location:'Brasil'},{text:'Minha hospedagem foi super tranquila...',name:'Hóspede',location:'Internacional'},{text:'Localização excelente; o proprietário estava disponível...',name:'Hóspede',location:'São Paulo'}]; c.innerHTML = t.map(x=>`<div class="testimonial-card"><div class="testimonial-text">"${x.text}"</div><div style="margin-top:8px">🌟🌟🌟🌟🌟</div><div class="testimonial-author"><div class="author-avatar">${x.name[0]}</div><div><div style="font-weight:700">${x.name}</div><div style="color:var(--muted)">${x.location}</div></div></div></div>`).join(''); }
   function renderAll(){ renderBenefits(); renderTestimonials(); renderRoomsGrid(); renderReservationCards(); }
 
   // Hero carousel init and buttons
@@ -1404,9 +1333,6 @@
     [qs('#toRoomsBtn'), qs('#toRoomsBtn2')].forEach(b => b && b.addEventListener('click', ()=> qs('#roomsSection').scrollIntoView({behavior:'smooth'})));
     renderIndicators(); update(); reset();
   })();
-
-  // small calendar state
-  const calSmallState = { roomId: null, currentDate: new Date(), onSelect: null };
 
   (function init(){ document.documentElement.lang='pt-BR'; document.documentElement.setAttribute('translate','no'); applySavedRoomDescs(); renderAll(); loadSheets(); })();
 
