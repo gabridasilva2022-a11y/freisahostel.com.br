@@ -199,7 +199,7 @@
 
     <main class="container">
       <section class="hero" id="hero" aria-label="Apresentação">
-        <div class="hero-slide" style="background-image:url('https://i.imgur.com/JXIOXmJ.jpeg')"></div>
+        <div class="hero-slide" style="background-image:url('https://i.imgur.com/tCOCNYU.jpeg')"></div>
         <div class="hero-slide" style="background-image:url('https://i.imgur.com/sjw1dGZ.jpeg')"></div>
         <div class="hero-slide" style="background-image:url('https://i.imgur.com/ftDKRIH.jpeg')"></div>
         <div class="hero-slide" style="background-image:url('https://i.imgur.com/JXIOXmJ.jpeg')"></div>
@@ -275,6 +275,26 @@
   const qsa = s => Array.from(document.querySelectorAll(s));
 
   const ROOM_LABELS = { q007: 'Misto', ar: 'Feminino', jb: 'Only', q777: 'Suíte' };
+
+  // Externalizable styles: edite aqui para mudar a aparência dos cards (exterior)
+  // Exemplo: quarto feminino 'ar' com vermelho escuro
+  const ROOM_CARD_STYLES = {
+    ar: 'border:1px solid #5d021f; background: linear-gradient(180deg,#3b0b0b,#5d021f); color: #fff;',
+    q007: 'border:1px solid #155e75; background: linear-gradient(180deg,#083344,#0b8793); color:#fff;',
+    q777: 'border:1px solid #6b1e6b; background:linear-gradient(180deg,#4b0a4b,#7b1e7b); color:#fff;',
+    jb: 'border:1px solid #b45309; background:linear-gradient(180deg,#78350f,#b45309); color:#fff;'
+  };
+
+  // Externalizable calendar colors: cada quarto pode ter esquema próprio para o calendário pequeno
+  const ROOM_CAL_COLORS = {
+    ar: { available:'#fdecea', reserved:'#5d021f', textAvailable:'#5d021f', textReserved:'#ffffff', swatchAvailable:'#feecec', swatchReserved:'#5d021f' },
+    q007: { available:'#e6f6f9', reserved:'#0b8793', textAvailable:'#083344', textReserved:'#ffffff', swatchAvailable:'#e8f7fb', swatchReserved:'#0b8793' },
+    q777: { available:'#f3e8fb', reserved:'#7b1e7b', textAvailable:'#4b0a4b', textReserved:'#ffffff', swatchAvailable:'#f7eefb', swatchReserved:'#7b1e7b' },
+    jb: { available:'#fff7ed', reserved:'#b45309', textAvailable:'#7a2f05', textReserved:'#ffffff', swatchAvailable:'#fff3e0', swatchReserved:'#b45309' }
+  };
+
+  // small calendar state (corrige erro: variável não declarada)
+  const calSmallState = { roomId: null, currentDate: new Date(), onSelect: null };
 
   // Global reserved maps
   let RESERVED = { reservedBeds: {}, reservedSuites: {}, roomBlockedDates: {} };
@@ -552,8 +572,8 @@
       beds: '14 camas',
       bathrooms: '4 banheiros',
       images: [
-        'https://i.imgur.com/TuYE4QA.jpeg',
         'https://i.imgur.com/DDQNMmz.jpeg',
+        'https://i.imgur.com/TuYE4QA.jpeg',
         'https://i.imgur.com/B2ZUMiU.jpeg',
         'https://i.imgur.com/usi1hKM.jpeg',
         'https://i.imgur.com/t5dIg5D.jpeg'
@@ -584,8 +604,8 @@
       beds: '3 suites',
       bathrooms: 'Banheiro privativo',
       images: [
-        'https://i.imgur.com/4pH80WA.jpeg',
         'https://i.imgur.com/kQrL0VB.jpeg',
+        'https://i.imgur.com/4pH80WA.jpeg',
         'https://i.imgur.com/7HTK1HL.jpeg',
         'https://i.imgur.com/dT8oe4I.jpeg',
         'https://i.imgur.com/9QzJr8A.jpeg',
@@ -913,14 +933,8 @@
 
     const today = new Date(); today.setHours(0,0,0,0);
 
-    const standardColors = {
-      available: 'linear-gradient(180deg,#e6f6ea,#e0f2e7)',
-      reserved: 'linear-gradient(180deg,#fdecea,#fbe6e4)',
-      textAvailable: '#1e8449',
-      textReserved: '#b91c1c',
-      swatchAvailable: '#e8f7ef',
-      swatchReserved: '#fdecea'
-    };
+    // pick colors for the current room (if configured), otherwise fallback
+    const colors = ROOM_CAL_COLORS[calSmallState.roomId] || { available:'#e6f6ea', reserved:'#fdecea', textAvailable:'#1e8449', textReserved:'#b91c1c', swatchAvailable:'#e8f7ef', swatchReserved:'#fdecea' };
 
     for(let d=1; d<=daysInMonth; d++){
       const dateObj = new Date(year, month, d); dateObj.setHours(0,0,0,0);
@@ -935,8 +949,8 @@
       if(isPast) div.classList.add('past');
 
       div.innerHTML = `<div class="cal-day-num">${d}</div>`;
-      div.style.background = isUnavailable ? standardColors.reserved : standardColors.available;
-      div.style.color = isUnavailable ? standardColors.textReserved : standardColors.textAvailable;
+      div.style.background = isUnavailable ? colors.reserved : colors.available;
+      div.style.color = isUnavailable ? colors.textReserved : colors.textAvailable;
 
       if(isUnavailable){
         div.setAttribute('aria-disabled','true');
@@ -954,11 +968,11 @@
     if(legend){
       legend.innerHTML = `
         <div style="display:flex;align-items:center;gap:6px;margin-right:12px">
-          <span class="swatch" style="background:${standardColors.swatchAvailable};border:1px solid rgba(30,132,73,0.12)"></span>
+          <span class="swatch" style="background:${colors.swatchAvailable};border:1px solid rgba(30,132,73,0.12)"></span>
           <span>Disponível</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px">
-          <span class="swatch" style="background:${standardColors.swatchReserved};border:1px solid rgba(185,28,28,0.08)"></span>
+          <span class="swatch" style="background:${colors.swatchReserved};border:1px solid rgba(185,28,28,0.08)"></span>
           <span>Reservado / Indisponível</span>
         </div>
       `;
