@@ -276,28 +276,43 @@
 
   const ROOM_LABELS = { q007: 'Misto', ar: 'Feminino', jb: 'Only', q777: 'Suíte' };
 
-  // Externalizable styles: edite aqui para mudar a aparência dos cards (exterior)
-  // Exemplo: quarto feminino 'ar' com vermelho escuro
-  const ROOM_CARD_STYLES = {
-    ar: 'border:1px solid #5d021f; background: linear-gradient(180deg,#3b0b0b,#5d021f); color: #fff;',
-    q007: 'border:1px solid #155e75; background: linear-gradient(180deg,#083344,#0b8793); color:#fff;',
-    q777: 'border:1px solid #6b1e6b; background:linear-gradient(180deg,#4b0a4b,#7b1e7b); color:#fff;',
-    jb: 'border:1px solid #b45309; background:linear-gradient(180deg,#78350f,#b45309); color:#fff;'
+  // Alias mapping requested:
+  // 'only'  -> jb (Only womans)
+  // 'suites' -> q777 (Suítes)
+  // 'misto' -> q007 (Quarto Misto)
+  // 'feminino' -> ar (Quarto Feminino)
+  const ALIAS_MAP = {
+    only: 'jb',
+    suites: 'q777',
+    misto: 'q007',
+    feminino: 'ar'
   };
 
-  // Externalizable calendar colors: cada quarto pode ter esquema próprio para o calendário pequeno
-  const ROOM_CAL_COLORS = {
-    ar: { available:'#fdecea', reserved:'#5d021f', textAvailable:'#5d021f', textReserved:'#ffffff', swatchAvailable:'#feecec', swatchReserved:'#5d021f' },
-    q007: { available:'#e6f6f9', reserved:'#0b8793', textAvailable:'#083344', textReserved:'#ffffff', swatchAvailable:'#e8f7fb', swatchReserved:'#0b8793' },
-    q777: { available:'#f3e8fb', reserved:'#7b1e7b', textAvailable:'#4b0a4b', textReserved:'#ffffff', swatchAvailable:'#f7eefb', swatchReserved:'#7b1e7b' },
-    jb: { available:'#fff7ed', reserved:'#b45309', textAvailable:'#7a2f05', textReserved:'#ffffff', swatchAvailable:'#fff3e0', swatchReserved:'#b45309' }
-  };
+  function normalizeAlias(s){
+    if(!s) return null;
+    let v = String(s).trim().toLowerCase();
+    // remove diacritics
+    v = v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // common synonyms/spaces
+    v = v.replace(/\s+/g, ' ').trim();
+    return v;
+  }
+  function aliasToRoomId(s){
+    const n = normalizeAlias(s);
+    if(!n) return null;
+    return ALIAS_MAP[n] || null;
+  }
 
-  // small calendar state (corrige erro: variável não declarada)
-  const calSmallState = { roomId: null, currentDate: new Date(), onSelect: null };
-
-  // Global reserved maps
-  let RESERVED = { reservedBeds: {}, reservedSuites: {}, roomBlockedDates: {} };
+  // given an alias/group (e.g. 'misto' or 'only'), return list of bed ids for that room
+  function bedsForRoomId(roomId){
+    if(!roomId) return [];
+    if(roomId === 'q777') return []; // suites room doesn't have beds here
+    const beds = [];
+    for(let i=1;i<=7;i++){ beds.push(`C${i}-T`); beds.push(`C${i}-B`); }
+    return beds;
+  }
+  // suites ids
+  function allSuites(){ return ['S1','S2','S3']; }
 
   // CSV parser
   function parseCSV(csvText){
@@ -386,57 +401,129 @@
     dates.forEach(d => map[key].add(d));
   }
 
+  // Build reserved maps from sheets, accepting group aliases
   function buildReservedMapsFromSheets(){
     const reservedBeds = {};
     const reservedSuites = {};
     const roomBlockedDates = {};
 
-    // calendar sheet
+    function markBeds(bedIds, startIso, endIso, dateIso){
+      bedIds.forEach(bid => {
+        if(startIso && endIso) addRangeToMap(reservedBeds, bid.trim(), startIso, endIso);
+        else if(dateIso) addDateToMap(reservedBeds, bid.trim(), dateIso);
+      });
+    }
+    function markSuites(suiteIds, startIso, endIso, dateIso){
+      suiteIds.forEach(sid => {
+        if(startIso && endIso) addRangeToMap(reservedSuites, sid.trim(), startIso, endIso);
+        else if(dateIso) addDateToMap(reservedSuites, sid.trim(), dateIso);
+      });
+    }
+
+    // calendar sheet rows
     SHEETS.calendar.forEach(row => {
       const status = String(row.status || row.availability || row.state || '').toLowerCase();
       const dateIso = tryParseDateToISO(row.date || row.day || row.dt);
       const startIso = tryParseDateToISO(row.checkin || row.start || row.from);
       const endIso = tryParseDateToISO(row.checkout || row.end || row.to);
-      const roomId = row.room_id || row.room || row.roomid || row.roomId;
-      const bedId = row.bed_id || row.bed || row.resource;
-      const suiteId = row.suite_id || row.suite;
+      const rawRoom = row.room_id || row.room || row.roomid || row.roomId || '';
+      const rawBed = row.bed_id || row.bed || row.resource || '';
+      const rawSuite = row.suite_id || row.suite || '';
 
+      // reserved flag words (if row indicates unavailable)
       const isReservedFlag = ['reserved','booked','blocked','unavailable','ocupado','indisponivel','yes','y','1'].some(s => status.includes(s));
 
-      if(bedId){
-        if(startIso && endIso) addRangeToMap(reservedBeds, bedId.trim(), startIso, endIso);
-        else if(dateIso && isReservedFlag) addDateToMap(reservedBeds, bedId.trim(), dateIso);
+      // Normalize and detect aliases
+      const roomAlias = normalizeAlias(rawRoom);
+      const bedAlias = normalizeAlias(rawBed);
+      const suiteAlias = normalizeAlias(rawSuite);
+
+      // If row indicates a room alias (e.g. 'misto'), map to internal roomId and register as room-level block
+      const mappedRoomId = aliasToRoomId(roomAlias);
+      if(mappedRoomId && isReservedFlag){
+        // treat as room-level block
+        if(startIso && endIso) addRangeToMap(roomBlockedDates, mappedRoomId, startIso, endIso);
+        else if(dateIso) addDateToMap(roomBlockedDates, mappedRoomId, dateIso);
       }
-      if(suiteId){
-        if(startIso && endIso) addRangeToMap(reservedSuites, suiteId.trim(), startIso, endIso);
-        else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, suiteId.trim(), dateIso);
+
+      // Beds: if bed column contains a group alias (e.g. 'misto'/'only'/'feminino') mark all beds for that room
+      if(bedAlias){
+        const mappedFromBedAlias = aliasToRoomId(bedAlias);
+        if(mappedFromBedAlias){
+          // it's a group alias that maps to a room (e.g. 'misto' -> q007)
+          const bedIds = bedsForRoomId(mappedFromBedAlias);
+          markBeds(bedIds, startIso, endIso, dateIso && isReservedFlag ? dateIso : null);
+        } else {
+          // bedAlias is not a known group => treat as specific bed id (C1-T or similar)
+          const bedId = rawBed && rawBed.trim();
+          if(bedId){
+            if(startIso && endIso) addRangeToMap(reservedBeds, bedId, startIso, endIso);
+            else if(dateIso && isReservedFlag) addDateToMap(reservedBeds, bedId, dateIso);
+          }
+        }
       }
-      if(roomId && isReservedFlag){
-        if(startIso && endIso) addRangeToMap(roomBlockedDates, roomId.trim(), startIso, endIso);
-        else if(dateIso) addDateToMap(roomBlockedDates, roomId.trim(), dateIso);
+
+      // Suites: if suite column contains a group alias (e.g. 'suites' or 'q777' or 'S1'), handle accordingly
+      if(suiteAlias){
+        const mappedFromSuiteAlias = aliasToRoomId(suiteAlias);
+        if(mappedFromSuiteAlias === 'q777' || suiteAlias === 'suites'){
+          // group suites => mark all suites
+          const sids = allSuites();
+          markSuites(sids, startIso, endIso, dateIso && isReservedFlag ? dateIso : null);
+        } else {
+          // may be a specific suite id like 'S1'
+          const sid = rawSuite && rawSuite.trim();
+          if(sid){
+            if(startIso && endIso) addRangeToMap(reservedSuites, sid, startIso, endIso);
+            else if(dateIso && isReservedFlag) addDateToMap(reservedSuites, sid, dateIso);
+          }
+        }
       }
     });
 
-    // beds sheet
+    // beds sheet (explicit per-bed rows) - also accept group aliases here
     SHEETS.beds.forEach(row => {
-      const bedId = row.bed_id || row.bed || row.id || row.name;
+      const bedRaw = row.bed_id || row.bed || row.id || row.name || '';
       const startIso = tryParseDateToISO(row.checkin || row.start || row.from);
       const endIso = tryParseDateToISO(row.checkout || row.end || row.to);
       const dateIso = tryParseDateToISO(row.date || row.day);
-      if(!bedId) return;
-      if(startIso && endIso) addRangeToMap(reservedBeds, bedId.trim(), startIso, endIso);
-      else if(dateIso) addDateToMap(reservedBeds, bedId.trim(), dateIso);
+      const alias = normalizeAlias(bedRaw);
+      const mapped = aliasToRoomId(alias);
+      if(mapped){
+        // group -> mark all beds for that mapped room
+        const bedIds = bedsForRoomId(mapped);
+        bedIds.forEach(bid => {
+          if(startIso && endIso) addRangeToMap(reservedBeds, bid.trim(), startIso, endIso);
+          else if(dateIso) addDateToMap(reservedBeds, bid.trim(), dateIso);
+        });
+      } else {
+        const bedId = bedRaw && bedRaw.trim();
+        if(!bedId) return;
+        if(startIso && endIso) addRangeToMap(reservedBeds, bedId, startIso, endIso);
+        else if(dateIso) addDateToMap(reservedBeds, bedId, dateIso);
+      }
     });
 
-    // suites sheet
+    // suites sheet (explicit per-suite rows) - accept group alias too
     SHEETS.suites.forEach(row => {
-      const suiteId = row.suite_id || row.suite || row.id || row.name;
+      const suiteRaw = row.suite_id || row.suite || row.id || row.name || '';
       const startIso = tryParseDateToISO(row.checkin || row.start || row.from);
       const endIso = tryParseDateToISO(row.checkout || row.end || row.to);
       const dateIso = tryParseDateToISO(row.date || row.day);
-      if(!suiteId) return;
-      if(startIso && endIso) addRangeToMap(reservedSuites, suiteId.trim(), startIso, endIso);
-      else if(dateIso) addDateToMap(reservedSuites, suiteId.trim(), dateIso);
+      const alias = normalizeAlias(suiteRaw);
+      const mapped = aliasToRoomId(alias);
+      if(mapped === 'q777' || alias === 'suites'){
+        const sids = allSuites();
+        sids.forEach(sid => {
+          if(startIso && endIso) addRangeToMap(reservedSuites, sid.trim(), startIso, endIso);
+          else if(dateIso) addDateToMap(reservedSuites, sid.trim(), dateIso);
+        });
+      } else {
+        const sid = suiteRaw && suiteRaw.trim();
+        if(!sid) return;
+        if(startIso && endIso) addRangeToMap(reservedSuites, sid, startIso, endIso);
+        else if(dateIso) addDateToMap(reservedSuites, sid, dateIso);
+      }
     });
 
     RESERVED = { reservedBeds, reservedSuites, roomBlockedDates };
@@ -447,7 +534,11 @@
   function isResourceFreeForRange(reservedMap, resourceId, start, end){
     if(!resourceId) return true;
     const s = reservedMap[resourceId];
-    if(!start || !end) return !(s && s.size > 0);
+
+    // When no explicit interval is provided (start or end missing), consider resource available by default.
+    // Availability will only be restricted by explicit dates/ranges declared in the sheets.
+    if(!start || !end) return true;
+
     const dates = datesBetween(start, end);
     if(!dates.length) return true;
     if(!s) return true;
@@ -466,12 +557,11 @@
     }
 
     if(roomId === 'q777'){
-      const allSuites = ['S1','S2','S3'];
-      const availableSuites = allSuites.filter(sid => isResourceFreeForRange(reservedSuites, sid, checkin, checkout));
+      const allS = allSuites();
+      const availableSuites = allS.filter(sid => isResourceFreeForRange(reservedSuites, sid, checkin, checkout));
       return { availableBeds: [], availableSuites, isAvailable: availableSuites.length > 0 };
     } else {
-      const allBeds = [];
-      for(let i=1;i<=7;i++){ allBeds.push(`C${i}-T`); allBeds.push(`C${i}-B`); }
+      const allBeds = bedsForRoomId(roomId);
       const availableBeds = allBeds.filter(bid => isResourceFreeForRange(reservedBeds, bid, checkin, checkout));
       return { availableBeds, availableSuites: [], isAvailable: availableBeds.length > 0 };
     }
@@ -483,17 +573,17 @@
     const { reservedBeds, reservedSuites, roomBlockedDates } = RESERVED;
     if(roomBlockedDates[roomId] && roomBlockedDates[roomId].has(dateIso)) return false;
     if(roomId === 'q777'){
-      const allSuites = ['S1','S2','S3'];
-      for(const s of allSuites){
+      const allS = allSuites();
+      for(const s of allS){
         const sset = reservedSuites[s];
         if(!sset || !sset.has(dateIso)) return true;
       }
       return false;
     } else {
-      for(let i=1;i<=7;i++){
-        const t = `C${i}-T`, b = `C${i}-B`;
-        const tset = reservedBeds[t], bset = reservedBeds[b];
-        if((!tset || !tset.has(dateIso)) || (!bset || !bset.has(dateIso))) return true;
+      const allB = bedsForRoomId(roomId);
+      for(const b of allB){
+        const bset = reservedBeds[b];
+        if(!bset || !bset.has(dateIso)) return true;
       }
       return false;
     }
@@ -807,7 +897,7 @@
     overlay.classList.add('show'); overlay.setAttribute('aria-hidden','false');
 
     const avail = checkAvailability('q777', checkin, checkout);
-    const allS = ['S1','S2','S3'];
+    const allS = allSuites();
     const reservedSet = new Set(allS.filter(sid => !(avail.availableSuites || []).includes(sid)));
 
     let selected = Array.from(preselected || []);
@@ -934,7 +1024,7 @@
     const today = new Date(); today.setHours(0,0,0,0);
 
     // pick colors for the current room (if configured), otherwise fallback
-    const colors = ROOM_CAL_COLORS[calSmallState.roomId] || { available:'#e6f6ea', reserved:'#fdecea', textAvailable:'#1e8449', textReserved:'#b91c1c', swatchAvailable:'#e8f7ef', swatchReserved:'#fdecea' };
+    const colors = ROOM_CAL_COLORS && ROOM_CAL_COLORS[calSmallState.roomId] ? ROOM_CAL_COLORS[calSmallState.roomId] : { available:'#e6f6ea', reserved:'#fdecea', textAvailable:'#1e8449', textReserved:'#b91c1c', swatchAvailable:'#e8f7ef', swatchReserved:'#fdecea' };
 
     for(let d=1; d<=daysInMonth; d++){
       const dateObj = new Date(year, month, d); dateObj.setHours(0,0,0,0);
@@ -1197,10 +1287,22 @@
 
   function fallbackSheets(){ return { calendar: [], pricing: [], rooms: [], beds: [], suites: [], extras: [] }; }
 
+  // minimal ROOM_CAL_COLORS & ROOM_CARD_STYLES kept (editable)
+  const ROOM_CARD_STYLES = {
+    ar: 'border:1px solid #5d021f; background: linear-gradient(180deg,#3b0b0b,#5d021f); color: #fff;',
+    q007: 'border:1px solid #155e75; background: linear-gradient(180deg,#083344,#0b8793); color:#fff;',
+    q777: 'border:1px solid #6b1e6b; background:linear-gradient(180deg,#4b0a4b,#7b1e7b); color:#fff;',
+    jb: 'border:1px solid #b45309; background:linear-gradient(180deg,#78350f,#b45309); color:#fff;'
+  };
+  const ROOM_CAL_COLORS = {
+    ar: { available:'#fdecea', reserved:'#5d021f', textAvailable:'#5d021f', textReserved:'#ffffff', swatchAvailable:'#feecec', swatchReserved:'#5d021f' },
+    q007: { available:'#e6f6f9', reserved:'#0b8793', textAvailable:'#083344', textReserved:'#ffffff', swatchAvailable:'#e8f7fb', swatchReserved:'#0b8793' },
+    q777: { available:'#f3e8fb', reserved:'#7b1e7b', textAvailable:'#4b0a4b', textReserved:'#ffffff', swatchAvailable:'#f7eefb', swatchReserved:'#7b1e7b' },
+    jb: { available:'#fff7ed', reserved:'#b45309', textAvailable:'#7a2f05', textReserved:'#ffffff', swatchAvailable:'#fff3e0', swatchReserved:'#b45309' }
+  };
+
   function renderBenefits(){ const c = qs('#benefitsGrid'); if(!c) return; const b=[{icon:'📍',title:'Localização Estratégica',text:'Em Copacabana, perto de tudo que você precisa'},{icon:'💰',title:'Custo-Benefício',text:'Preços justos para uma experiência incrível'},{icon:'🔒',title:'Conforto e Segurança',text:'Sua estadia tranquila é nossa prioridade'},{icon:'🤝',title:'Ambiente Social',text:'Conheça viajantes do mundo todo'},{icon:'🍳',title:'Estrutura Prática',text:'Cozinha compartilhada e áreas comuns'},{icon:'🌳',title:'Experiência Carioca',text:'Viva o Rio de Janeiro autenticamente'}]; c.innerHTML = b.map(x=>`<div class="benefit-card"><div class="benefit-icon" aria-hidden="true">${x.icon}</div><h3>${x.title}</h3><p>${x.text}</p></div>`).join(''); }
-
   function renderTestimonials(){ const c = qs('#testimonialsGrid'); if(!c) return; const t=[{text:'Fiquei 4 noites em Copacabana. Localização excelente...',name:'Hóspede',location:'Brasil'},{text:'Minha hospedagem foi super tranquila...',name:'Hóspede',location:'Internacional'},{text:'Localização excelente; o proprietário estava disponível...',name:'Hóspede',location:'São Paulo'}]; c.innerHTML = t.map(x=>`<div class="testimonial-card"><div class="testimonial-text">"${x.text}"</div><div style="margin-top:8px">🌟🌟🌟🌟🌟</div><div class="testimonial-author"><div class="author-avatar">${x.name[0]}</div><div><div style="font-weight:700">${x.name}</div><div style="color:var(--muted)">${x.location}</div></div></div></div>`).join(''); }
-
   function renderAll(){ renderBenefits(); renderTestimonials(); renderRoomsGrid(); renderReservationCards(); }
 
   // Hero carousel init and buttons
@@ -1220,6 +1322,9 @@
     [qs('#toRoomsBtn'), qs('#toRoomsBtn2')].forEach(b => b && b.addEventListener('click', ()=> qs('#roomsSection').scrollIntoView({behavior:'smooth'})));
     renderIndicators(); update(); reset();
   })();
+
+  // small calendar state
+  const calSmallState = { roomId: null, currentDate: new Date(), onSelect: null };
 
   (function init(){ document.documentElement.lang='pt-BR'; document.documentElement.setAttribute('translate','no'); applySavedRoomDescs(); renderAll(); loadSheets(); })();
 
