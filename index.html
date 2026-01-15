@@ -10,17 +10,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="format-detection" content="telephone=no" />
 
-  <!-- SEO meta tags requested -->
   <title>FreiSa Hostel — Reserva (v7)</title>
   <meta name="description" content="FreiSa Hostel — Hostel em Copacabana. Hospedagem confortável, econômica e com ótima localização em Copacabana. Reserve camas ou suítes com facilidade." />
   <meta name="keywords" content="hostel em Copacabana, hostel, Copacabana, freisa hostel, hospedagem, hospedagem em Copacabana, hospedagem barata em Copacabana" />
   <link rel="canonical" href="https://example.com/freisa-hostel-reserva" />
-
-  <!-- Open Graph (basic) -->
-  <meta property="og:title" content="FreiSa Hostel — Reserva" />
-  <meta property="og:description" content="Hostel em Copacabana — hospedagem com bom custo‑benefício. Reserve camas e suítes no FreiSa Hostel." />
-  <meta property="og:type" content="website" />
-  <meta property="og:locale" content="pt_BR" />
 
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 
@@ -108,7 +101,7 @@
     /* Reservation */
     .reservation-section{background:linear-gradient(135deg,#0f1724 0%,#0b1220 100%);padding:18px;border-radius:12px;color:#fff}
     .reservation-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:12px}
-    .reservation-card{ /* default fallback, may be overridden inline per room */ background:rgba(255,255,255,0.04);padding:14px;border-radius:10px;color:#fff; border:1px solid rgba(255,255,255,0.03) }
+    .reservation-card{ background:rgba(255,255,255,0.04);padding:14px;border-radius:10px;color:#fff; border:1px solid rgba(255,255,255,0.03) }
     .form-group label{display:block;margin-bottom:6px;font-weight:700;color:rgba(255,255,255,0.95)}
     input[type="text"], select { width:100%;padding:10px;border-radius:10px;border:0;background:rgba(255,255,255,0.04);color:#fff;outline:none }
 
@@ -135,56 +128,21 @@
 
     .calendar-small{width:100%;max-width:100%;margin:0 auto}
     .calendar-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:8px;text-align:center;color:var(--muted);font-weight:700;font-size:0.85rem}
-    /* full-width 7-column grid and avoid horizontal overflow */
     .calendar-grid-small{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;width:100%;box-sizing:border-box;min-width:0}
-    /* square cells with rounded corners and centered numbers */
-    .calendar-day-small{
-      aspect-ratio: 1/1;
-      display:grid;
-      place-items:center;
-      padding:8px;
-      border-radius:12px;
-      min-height:0;
-      font-size:0.95rem;
-      color:#111;
-      cursor:pointer;
-      background:transparent;
-      overflow:hidden;
-    }
+    .calendar-day-small{ aspect-ratio: 1/1; display:grid; place-items:center; padding:8px; border-radius:12px; min-height:0; font-size:0.95rem; color:#111; cursor:pointer; background:transparent; overflow:hidden; }
     .calendar-day-small.empty{background:transparent;cursor:default}
-    .calendar-day-small.available{ /* will be set inline to green */ }
-    .calendar-day-small.reserved{ /* will be set inline to red */ }
     .calendar-day-small.past{opacity:0.85}
     .calendar-day-small .cal-day-num{font-weight:700;font-size:1.05rem;line-height:1}
-    .calendar-day-small .cal-day-price{display:none} /* preços removidos */
     .calendar-legend{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:0.9rem;color:var(--muted)}
     .swatch{width:14px;height:14px;border-radius:4px;display:inline-block}
 
-    /* Beds / suites */
     .beds-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin-top:12px}
     .bed-item{padding:10px;border-radius:8px;border:1px solid #e9e9e9;background:#fff;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;min-height:110px;position:relative;transition:box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease}
     .bed-item img{width:64px;height:48px;object-fit:cover;border-radius:6px}
     .bed-item.reserved{background:var(--danger);color:#fff;border-color:var(--danger);cursor:not-allowed;opacity:0.9}
     .bed-item:not(.reserved){background:var(--accent);color:#fff;border-color:var(--accent)}
     .bed-item.selected{transform:translateY(-6px) scale(1.02);box-shadow:0 14px 40px rgba(39,174,96,0.18);border-color:#1e8449}
-    /* confirmation badge and pop animation */
-    .bed-item.selected::after{
-      content: '✓';
-      position: absolute;
-      top:8px;
-      right:8px;
-      background: #27ae60;
-      color: #fff;
-      width:22px;
-      height:22px;
-      border-radius:50%;
-      display:grid;
-      place-items:center;
-      font-weight:700;
-      box-shadow: 0 6px 18px rgba(39,174,96,0.18);
-      transform: scale(0);
-      animation: popIn 260ms cubic-bezier(.2,.9,.2,1) forwards;
-    }
+    .bed-item.selected::after{ content: '✓'; position: absolute; top:8px; right:8px; background: #27ae60; color: #fff; width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-weight:700; box-shadow: 0 6px 18px rgba(39,174,96,0.18); transform: scale(0); animation: popIn 260ms cubic-bezier(.2,.9,.2,1) forwards; }
     @keyframes popIn{ from{ transform: scale(0);} to{ transform: scale(1);} }
 
     .suite-item{padding:12px;border-radius:10px;border:1px solid #eaeaea;background:#fff;text-align:center;cursor:pointer;min-height:110px;display:flex;flex-direction:column;align-items:center;gap:8px}
@@ -242,7 +200,7 @@
 
     <main class="container">
       <section class="hero" id="hero" aria-label="Apresentação">
-        <div class="hero-slide" style="background-image:url('https://i.imgur.com/kuLNWTy.jpeg')"></div>
+        <div class="hero-slide" style="background-image:url('https://i.imgur.com/yJVRpnc.jpeg')"></div>
         <div class="hero-slide" style="background-image:url('https://i.imgur.com/sjw1dGZ.jpeg')"></div>
         <div class="hero-slide" style="background-image:url('https://i.imgur.com/ftDKRIH.jpeg')"></div>
         <div class="hero-slide" style="background-image:url('https://i.imgur.com/JXIOXmJ.jpeg')"></div>
@@ -436,6 +394,205 @@
     return extra ? parseFloat(extra.price) : 100;
   }
 
+  // Helpers to work with date ranges
+  function datesBetween(startStr, endStr){
+    if(!startStr || !endStr) return [];
+    const start = parseLocalDate(startStr);
+    const end = parseLocalDate(endStr);
+    if(!start || !end) return [];
+    const dates = [];
+    for(let d = new Date(start); d < end; d.setDate(d.getDate()+1)){
+      dates.push(formatLocalDateJS(new Date(d)));
+    }
+    return dates;
+  }
+  function addRangeToMap(map, key, startStr, endStr){
+    if(!key) return;
+    map[key] = map[key] || new Set();
+    if(startStr && endStr){
+      datesBetween(startStr,endStr).forEach(ds => map[key].add(ds));
+    } else if(startStr){
+      map[key].add(startStr);
+    }
+  }
+
+  // Build reserved maps from SHEETS.* data in a flexible way (works with different CSV shapes)
+  function buildReservedMaps(){
+    const reservedBeds = {};    // bedId -> Set(dates)
+    const reservedSuites = {};  // suiteId -> Set(dates)
+    const roomBlockedDates = {}; // room_id -> Set(dates) (when whole room is marked)
+    // Process calendar (expected columns: room_id, date, status)
+    SHEETS.calendar.forEach(row => {
+      const rid = row.room_id || row.room || row.roomid || row.roomId;
+      const date = row.date || row.day || row.dt;
+      const status = (row.status || row.state || row.availability || '').toString().toLowerCase();
+      if(!date) return;
+      const d = date.trim();
+      if(!d) return;
+      if(rid){
+        const key = rid.trim();
+        if(['reserved','booked','blocked','unavailable','ocupado','indisponivel','yes','y','1'].some(s => status.includes(s))){
+          roomBlockedDates[key] = roomBlockedDates[key] || new Set();
+          roomBlockedDates[key].add(d);
+        }
+      }
+    });
+
+    // Process beds (multiple possible column names)
+    SHEETS.beds.forEach(row => {
+      const bedId = row.bed_id || row.bed || row.id || row.name;
+      const rid = row.room_id || row.room || row.roomid;
+      const checkin = row.checkin || row.start || row.from;
+      const checkout = row.checkout || row.end || row.to;
+      const date = row.date || row.day;
+      const status = (row.status || row.state || row.availability || '').toString().toLowerCase();
+      if(!bedId) return;
+      if(checkin && checkout){
+        addRangeToMap(reservedBeds, bedId.trim(), checkin.trim(), checkout.trim());
+      } else if(date){
+        addRangeToMap(reservedBeds, bedId.trim(), date.trim(), null);
+      }
+    });
+
+    // Process suites similarly
+    SHEETS.suites.forEach(row => {
+      const suiteId = row.suite_id || row.suite || row.id || row.name;
+      const checkin = row.checkin || row.start || row.from;
+      const checkout = row.checkout || row.end || row.to;
+      const date = row.date || row.day;
+      const status = (row.status || row.state || row.availability || '').toString().toLowerCase();
+      if(!suiteId) return;
+      if(checkin && checkout){
+        addRangeToMap(reservedSuites, suiteId.trim(), checkin.trim(), checkout.trim());
+      } else if(date){
+        addRangeToMap(reservedSuites, suiteId.trim(), date.trim(), null);
+      }
+    });
+
+    // Some users may put bed bookings inside calendar sheet (bed_id + date or range)
+    SHEETS.calendar.forEach(row => {
+      const bedId = row.bed_id || row.bed || row.resource;
+      const suiteId = row.suite_id || row.suite;
+      const date = row.date || row.day;
+      const checkin = row.checkin || row.start || row.from;
+      const checkout = row.checkout || row.end || row.to;
+      const status = (row.status || row.state || row.availability || '').toString().toLowerCase();
+      if(bedId){
+        if(checkin && checkout) addRangeToMap(reservedBeds, bedId.trim(), checkin.trim(), checkout.trim());
+        else if(date && ['reserved','booked','occupied','ocupado','1','yes'].some(s=>status.includes(s))) addRangeToMap(reservedBeds, bedId.trim(), date.trim(), null);
+      }
+      if(suiteId){
+        if(checkin && checkout) addRangeToMap(reservedSuites, suiteId.trim(), checkin.trim(), checkout.trim());
+        else if(date && ['reserved','booked','occupied','ocupado','1','yes'].some(s=>status.includes(s))) addRangeToMap(reservedSuites, suiteId.trim(), date.trim(), null);
+      }
+    });
+
+    return { reservedBeds, reservedSuites, roomBlockedDates };
+  }
+
+  // Determine availability for a room given checkin/checkout.
+  // Returns: { availableBeds: [], availableSuites: [], isAvailable: boolean }
+  function checkAvailability(roomId, checkin, checkout){
+    const { reservedBeds, reservedSuites, roomBlockedDates } = buildReservedMaps();
+
+    function isResourceFreeForRange(reservedMap, resourceId, startStr, endStr){
+      if(!resourceId) return true;
+      if(!startStr || !endStr){
+        // If no date range provided, treat as available unless there's any reservation present for that resource.
+        const s = reservedMap[resourceId];
+        return !(s && s.size > 0);
+      }
+      const dates = datesBetween(startStr, endStr);
+      const reservedSet = reservedMap[resourceId];
+      if(!reservedSet) return true;
+      for(const d of dates){
+        if(reservedSet.has(d)) return false;
+      }
+      return true;
+    }
+
+    // Room blocked check (room-level blocked dates)
+    if(checkin && checkout && roomBlockedDates[roomId]){
+      const dates = datesBetween(checkin, checkout);
+      for(const d of dates){
+        if(roomBlockedDates[roomId].has(d)) return { availableBeds: [], availableSuites: [], isAvailable: false };
+      }
+    }
+
+    if(roomId === 'q777'){
+      const allSuites = ['S1','S2','S3'];
+      const availableSuites = [];
+      for(const s of allSuites){
+        const free = isResourceFreeForRange(reservedSuites, s, checkin, checkout);
+        if(free) availableSuites.push(s);
+      }
+      return { availableBeds: [], availableSuites, isAvailable: availableSuites.length > 0 };
+    } else {
+      const allBeds = [];
+      for(let i=1;i<=7;i++){
+        allBeds.push(`C${i}-T`);
+        allBeds.push(`C${i}-B`);
+      }
+      const availableBeds = [];
+      for(const bed of allBeds){
+        const free = isResourceFreeForRange(reservedBeds, bed, checkin, checkout);
+        if(free) availableBeds.push(bed);
+      }
+      return { availableBeds, availableSuites: [], isAvailable: availableBeds.length > 0 };
+    }
+  }
+
+  function getPriceForDate(roomId, dateStr){
+    if(!dateStr) return getBasePrice(roomId);
+    const d = parseLocalDate(dateStr);
+    if(!d) return getBasePrice(roomId);
+    const isFebruary = d.getMonth() === 1; // February = 1
+
+    if(isFebruary){
+      if(roomId === 'q777') return 1000;
+      if(['jb','q007','ar'].includes(roomId)) return 500;
+    }
+
+    const priceRow = SHEETS.pricing.find(p => p.room_id === roomId && p.date === dateStr);
+    return priceRow ? parseFloat(priceRow.price) : getBasePrice(roomId);
+  }
+
+  function computeDynamicPricing(roomId, checkin, checkout, guests=1, selectedBeds=[], selectedSuites=[]){
+    if (!checkin || !checkout) return { nightlyPrices: [], baseTotal: 0 };
+
+    const start = parseLocalDate(checkin);
+    const end = parseLocalDate(checkout);
+    const nights = Math.ceil((end - start) / (1000*60*60*24));
+
+    const nightlyPrices = [];
+    let baseTotal = 0;
+
+    for (let i = 0; i < nights; i++){
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      const dateStr = formatLocalDateJS(d);
+
+      const pricePerUnit = getPriceForDate(roomId, dateStr);
+
+      let nightTotal =
+        roomId === 'q777'
+          ? pricePerUnit * selectedSuites.length
+          : pricePerUnit * guests;
+
+      nightlyPrices.push({
+        date: dateStr,
+        price: pricePerUnit,
+        total: nightTotal
+      });
+
+      baseTotal += nightTotal;
+    }
+
+    return { nightlyPrices, baseTotal };
+  }
+
+  function getExtraPrice(key){ const r = SHEETS.extras.find(e => e.key === key); return r ? parseFloat(r.price) : 0; }
+
   const bedSvg = `<svg viewBox="0 0 24 24" width="34" height="22" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="8" width="20" height="8" rx="1.5" stroke="#111" stroke-width="1.2" fill="none"/><path d="M4 16v2" stroke="#111" stroke-width="1.2" stroke-linecap="round"/><path d="M20 16v2" stroke="#111" stroke-width="1.2" stroke-linecap="round"/><rect x="4" y="9" width="6" height="3" rx="1" fill="#111" opacity="0.08"/></svg>`;
   const suiteSvg = `<svg viewBox="0 0 24 24" width="48" height="36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="6" width="20" height="12" rx="2" stroke="#111" stroke-width="1.2" fill="none"/><circle cx="7" cy="12" r="1.5" fill="#111" /><rect x="12" y="9" width="6" height="6" rx="1" fill="#111" opacity="0.06" /></svg>`;
 
@@ -452,16 +609,13 @@
     return suiteSvg;
   }
 
-  // Helper to map internal bed id (C{index}-{T|B}) to display label per room
   function bedIdToLabel(roomId, bedId){
     if(!bedId) return bedId;
     const labelBase = ROOM_LABELS[roomId] || ROOM_LABELS['jb'] || 'Cama';
-    // bedId e.g. C3-T
     const m = /^C(\d+)-([TB])$/.exec(bedId);
     if(!m) return bedId;
-    const idx = Number(m[1]); // 1..7
-    const pos = m[2]; // 'T' or 'B'
-    // numbering: top (T) -> odd numbers 1,3,5,... ; bottom (B) -> even numbers 2,4,6,...
+    const idx = Number(m[1]);
+    const pos = m[2];
     const number = pos === 'T' ? (idx * 2 - 1) : (idx * 2);
     return `${labelBase} ${number}`;
   }
@@ -476,8 +630,8 @@
       beds: '14 camas',
       bathrooms: '4 banheiros',
       images: [
-        'https://i.imgur.com/TuYE4QA.jpeg',
         'https://i.imgur.com/DDQNMmz.jpeg',
+        'https://i.imgur.com/TuYE4QA.jpeg',
         'https://i.imgur.com/B2ZUMiU.jpeg',
         'https://i.imgur.com/usi1hKM.jpeg',
         'https://i.imgur.com/t5dIg5D.jpeg'
@@ -559,74 +713,7 @@
     });
   }
 
-  // ALTERAÇÃO: forçar todas as camas e suítes como disponíveis
-  function checkAvailability(roomId, checkin, checkout){
-    // Retorna todas as camas/suítes como disponíveis, ignorando SHEETS.calendar/beds/suites
-    if (roomId === 'q777'){
-      return { availableBeds: [], availableSuites: ['S1','S2','S3'], isAvailable: true };
-    } else {
-      const availableBeds = [];
-      for (let i=1;i<=7;i++){
-        ['T','B'].forEach(pos => {
-          const bedId = `C${i}-${pos}`;
-          availableBeds.push(bedId);
-        });
-      }
-      return { availableBeds, availableSuites: [], isAvailable: true };
-    }
-  }
-
-  function getPriceForDate(roomId, dateStr){
-    if(!dateStr) return getBasePrice(roomId);
-    const d = parseLocalDate(dateStr);
-    if(!d) return getBasePrice(roomId);
-    const isFebruary = d.getMonth() === 1; // February = 1
-
-    if(isFebruary){
-      if(roomId === 'q777') return 1000;
-      if(['jb','q007','ar'].includes(roomId)) return 500;
-    }
-
-    const priceRow = SHEETS.pricing.find(p => p.room_id === roomId && p.date === dateStr);
-    return priceRow ? parseFloat(priceRow.price) : getBasePrice(roomId);
-  }
-
-  function computeDynamicPricing(roomId, checkin, checkout, guests=1, selectedBeds=[], selectedSuites=[]){
-    if (!checkin || !checkout) return { nightlyPrices: [], baseTotal: 0 };
-
-    const start = parseLocalDate(checkin);
-    const end = parseLocalDate(checkout);
-    const nights = Math.ceil((end - start) / (1000*60*60*24));
-
-    const nightlyPrices = [];
-    let baseTotal = 0;
-
-    for (let i = 0; i < nights; i++){
-      const d = new Date(start);
-      d.setDate(d.getDate() + i);
-      const dateStr = formatLocalDateJS(d);
-
-      const pricePerUnit = getPriceForDate(roomId, dateStr);
-
-      let nightTotal =
-        roomId === 'q777'
-          ? pricePerUnit * selectedSuites.length
-          : pricePerUnit * guests;
-
-      nightlyPrices.push({
-        date: dateStr,
-        price: pricePerUnit,
-        total: nightTotal
-      });
-
-      baseTotal += nightTotal;
-    }
-
-    return { nightlyPrices, baseTotal };
-  }
-
-  function getExtraPrice(key){ const r = SHEETS.extras.find(e => e.key === key); return r ? parseFloat(r.price) : 0; }
-
+  // UI rendering functions (rooms grid, modals, calendar, beds/suites selection, reservation cards)
   function renderBenefits(){ const container = qs('#benefitsGrid'); if(!container) return; const benefits = [ { icon:'📍', title:'Localização Estratégica', text:'Em Copacabana, perto de tudo que você precisa' },{ icon:'💰', title:'Custo-Benefício', text:'Preços justos para uma experiência incrível' },{ icon:'🔒', title:'Conforto e Segurança', text:'Sua estadia tranquila é nossa prioridade' },{ icon:'🤝', title:'Ambiente Social', text:'Conheça viajantes do mundo todo' },{ icon:'🍳', title:'Estrutura Prática', text:'Cozinha compartilhada e áreas comuns' },{ icon:'🌳', title:'Experiência Carioca', text:'Viva o Rio de Janeiro autenticamente' } ]; container.innerHTML = benefits.map(b=>`<div class="benefit-card"><div class="benefit-icon" aria-hidden="true">${b.icon}</div><h3>${b.title}</h3><p>${b.text}</p></div>`).join(''); }
 
   function renderTestimonials(){ const container = qs('#testimonialsGrid'); if(!container) return; const testimonials=[ { text:'Fiquei 4 noites em Copacabana. Localização excelente — mercados, padarias e bares na mesma rua; a apenas 2 minutos da praia...', name:'Hóspede', location:'Brasil' },{ text:'Minha hospedagem foi super tranquila. A um quarteirão da praia e perto do SESC Copacabana...', name:'Hóspede', location:'Internacional' },{ text:'Localização excelente; o proprietário estava disponível sempre que precisei...', name:'Hóspede', location:'São Paulo' } ]; container.innerHTML = testimonials.map(t=>`<div class="testimonial-card"><div class="testimonial-text">"${t.text}"</div><div style="margin-top:8px">🌟🌟🌟🌟🌟</div><div class="testimonial-author"><div class="author-avatar">${t.name[0]}</div><div><div style="font-weight:700">${t.name}</div><div style="color:var(--muted)">${t.location}</div></div></div></div>`).join(''); }
@@ -689,22 +776,18 @@
     document.addEventListener('keydown', onKey);
   }
 
-  // Beds modal: now requires selecting exactly maxBeds (equal to number of guests)
   function openBedsModal({ roomId, maxBeds = 1, preselected = [], checkin = null, checkout = null, onConfirm = null } = {}) {
     const overlay = qs('#calendarOverlay');
     overlay.innerHTML = '';
     overlay.classList.add('show'); overlay.setAttribute('aria-hidden','false');
 
     const avail = checkAvailability(roomId, checkin, checkout);
-    // Build top and bottom arrays with display labels according to requested numbering:
     const topBeds = [];
     const bottomBeds = [];
-    // 7 positions each (internal IDs remain C1..C7)
     const roomLabel = ROOM_LABELS[roomId] || ROOM_LABELS['jb'] || 'Cama';
     for (let i=1;i<=7;i++){
       const topId = `C${i}-T`;
       const bottomId = `C${i}-B`;
-      // numbering: top -> odd, bottom -> even
       const topNum = i * 2 - 1;
       const bottomNum = i * 2;
       topBeds.push({ id: topId, label: `${roomLabel} ${topNum}` });
@@ -712,7 +795,7 @@
     }
 
     const allBeds = topBeds.map(b=>b.id).concat(bottomBeds.map(b=>b.id));
-    const reservedSet = new Set(allBeds.filter(bid => !avail.availableBeds.includes(bid)));
+    const reservedSet = new Set(allBeds.filter(bid => !(avail.availableBeds || []).includes(bid)));
 
     let selected = Array.from(preselected || []).slice(0, maxBeds);
 
@@ -810,7 +893,7 @@
 
     const avail = checkAvailability('q777', checkin, checkout);
     const allS = ['S1','S2','S3'];
-    const reservedSet = new Set(allS.filter(sid => !avail.availableSuites.includes(sid)));
+    const reservedSet = new Set(allS.filter(sid => !(avail.availableSuites || []).includes(sid)));
 
     let selected = Array.from(preselected || []);
 
@@ -929,7 +1012,6 @@
     calSmallState.roomId = null; calSmallState.onSelect = null;
   }
 
-  // IMPORTANT: calendar day coloring restored to green (available) and red (reserved)
   function renderCalendarSmall(){
     const modal = qs('#calendarOverlay .modal'); if(!modal) return;
     const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -949,16 +1031,14 @@
       grid.appendChild(empty);
     }
 
-    // Keep reservedSet empty by default (previous logic), but days' colors follow the standard green/red rule:
-    const reservedSet = new Set(); // if you add reserved dates, mark them here
+    const reservedSet = new Set();
 
     const today = new Date();
     today.setHours(0,0,0,0);
 
-    // Standard color scheme: green available, red reserved
     const standardColors = {
-      available: 'linear-gradient(180deg,#e6f6ea,#e0f2e7)', // light green
-      reserved: 'linear-gradient(180deg,#fdecea,#fbe6e4)',  // light red
+      available: 'linear-gradient(180deg,#e6f6ea,#e0f2e7)',
+      reserved: 'linear-gradient(180deg,#fdecea,#fbe6e4)',
       textAvailable: '#1e8449',
       textReserved: '#b91c1c',
       swatchAvailable: '#e8f7ef',
@@ -979,7 +1059,6 @@
 
       div.innerHTML = `<div class="cal-day-num">${d}</div>`;
 
-      // Apply the standard green/red scheme
       div.style.background = isUnavailable ? standardColors.reserved : standardColors.available;
       div.style.color = isUnavailable ? standardColors.textReserved : standardColors.textAvailable;
 
@@ -995,7 +1074,6 @@
       grid.appendChild(div);
     }
 
-    // Update legend with standard green/red swatches (but if you want room-specific swatches you can replace them)
     const legend = modal.querySelector('.calendar-legend');
     if(legend){
       legend.innerHTML = `
@@ -1011,10 +1089,14 @@
     }
   }
 
+  function escapeHtml(str){
+    if(!str) return '';
+    return String(str).replace(/[&<>"]/g, function(tag){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[tag]); });
+  }
+
   function renderReservationCards(){
     const container = qs('#reservationCards');
     if(!container) return;
-    // Build cards, adding inline style from ROOM_CARD_STYLES per room
     container.innerHTML = staticRooms.map(r => {
       const styleAttr = ROOM_CARD_STYLES[r.roomId] ? `style="${ROOM_CARD_STYLES[r.roomId]}"` : '';
       return `
@@ -1037,7 +1119,6 @@
           </div>
         </div>
 
-        <!-- Guest info inputs (dynamic based on number of guests) -->
         <div data-role="guestinfo" style="margin-top:12px"></div>
 
         <div style="margin-top:8px;color:var(--muted)">
@@ -1081,7 +1162,6 @@
 
       const state = { checkin:null, checkout:null, guests:1, selectedBeds:[], selectedSuites:[], early:false, late:false, transferIn:false, transferOut:false, guestInfo: [] };
 
-      // initialize guestInfo for 1 guest
       function ensureGuestInfo(n){
         state.guestInfo = state.guestInfo || [];
         while(state.guestInfo.length < n) state.guestInfo.push({ name: '', id: '' });
@@ -1089,12 +1169,10 @@
       }
       ensureGuestInfo(1);
 
-      // Update select button initial text
       selectBedsBtn.textContent = roomId==='q777' ? `Selecionar suítes (${state.selectedSuites.length})` : `Selecionar camas (${state.selectedBeds.length})`;
 
       function renderGuestFields(){
         ensureGuestInfo(state.guests);
-        // Build markup for each guest: name + cpf/passaporte
         guestInfoContainer.innerHTML = '';
         for(let i=0;i<state.guests;i++){
           const g = state.guestInfo[i] || { name:'', id:'' };
@@ -1109,7 +1187,6 @@
           `;
           guestInfoContainer.appendChild(block);
         }
-        // Attach listeners
         guestInfoContainer.querySelectorAll('[data-guest-name]').forEach(inp=>{
           inp.addEventListener('input', e=>{
             const idx = Number(e.target.getAttribute('data-guest-name'));
@@ -1124,7 +1201,6 @@
             state.guestInfo[idx].id = e.target.value.trim();
           });
         });
-        // Populate existing values (in case of updates)
         guestInfoContainer.querySelectorAll('[data-guest-name]').forEach(el=>{
           const idx = Number(el.getAttribute('data-guest-name'));
           el.value = state.guestInfo[idx] ? state.guestInfo[idx].name : '';
@@ -1151,9 +1227,7 @@
         if(!state.checkin || !state.checkout) return false;
         if(parseLocalDate(state.checkout) <= parseLocalDate(state.checkin)) return false;
         if(roomId === 'q777') return state.selectedSuites.length > 0;
-        // New rule: number of selected beds must be equal to number of guests
         if(state.selectedBeds.length !== state.guests) return false;
-        // Guest info validation
         ensureGuestInfo(state.guests);
         for(let i=0;i<state.guests;i++){
           const g = state.guestInfo[i];
@@ -1209,7 +1283,6 @@
         updatePriceUI();
       });
 
-      // initial render guest fields
       renderGuestFields();
 
       selectBedsBtn.addEventListener('click', ()=> {
@@ -1220,7 +1293,6 @@
             state.selectedBeds = sel;
             selectBedsBtn.textContent = `Selecionar camas (${sel.length})`;
             updatePriceUI();
-            // small user feedback: briefly pulse the reservation card to show selection applied
             card.animate([{ boxShadow: '0 0 0 rgba(0,0,0,0)' }, { boxShadow: '0 12px 40px rgba(0,0,0,0.16)' }, { boxShadow: '0 0 0 rgba(0,0,0,0)' }], { duration: 380 });
           } });
         }
@@ -1242,7 +1314,6 @@
           alert(`Para este quarto é necessário selecionar exatamente ${state.guests} cama(s). Atualmente selecionadas: ${state.selectedBeds.length}.`);
           return;
         }
-        // Validate guest info (name + cpf/passaporte) for each guest
         ensureGuestInfo(state.guests);
         for(let i=0;i<state.guests;i++){
           const g = state.guestInfo[i];
@@ -1253,7 +1324,6 @@
         }
 
         const nights = Math.ceil((parseLocalDate(state.checkout) - parseLocalDate(state.checkin)) / (1000*60*60*24));
-        // Build beds text with human labels
         const bedsText = roomId === 'q777' ? state.selectedSuites.join(', ') : state.selectedBeds.map(bid=>bedIdToLabel(roomId, bid)).join(', ');
         const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites);
         let total = baseTotal;
@@ -1296,11 +1366,6 @@
     [qs('#toRoomsBtn'), qs('#toRoomsBtn2')].forEach(b => b && b.addEventListener('click', ()=> qs('#roomsSection').scrollIntoView({behavior:'smooth'})));
     renderIndicators(); update(); reset();
   })();
-
-  function escapeHtml(str){
-    if(!str) return '';
-    return String(str).replace(/[&<>"]/g, function(tag){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[tag]); });
-  }
 
   function renderAll(){ renderBenefits(); renderTestimonials(); renderRoomsGrid(); renderReservationCards(); }
   (function init(){ document.documentElement.lang='pt-BR'; document.documentElement.setAttribute('translate','no'); applySavedRoomDescs(); renderAll(); loadSheets(); })();
