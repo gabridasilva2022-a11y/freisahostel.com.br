@@ -305,7 +305,7 @@
   let SHEETS = { calendar:[], pricing:[], rooms:[], beds:[], suites:[], extras:[] };
   let RESERVED = { reservedBeds: {}, reservedSuites: {}, roomBlockedDates: {}, reservedAllBeds: new Set(), reservedAllSuites: new Set() };
 
-  // CSV parser
+  // CSV parser (unchanged)
   function parseCSV(csvText){
     if(!csvText) return [];
     const rows=[];
@@ -329,7 +329,7 @@
     return rows.slice(1).map(r=>{ const o={}; headers.forEach((h,i)=> o[h]=(r[i]||'').trim()); return o; })
   }
 
-  // Date helpers
+  // Date helpers (unchanged)
   function tryParseDateToISO(s){
     if(!s) return null;
     s = String(s).trim();
@@ -376,7 +376,7 @@
   function escapeHtml(str){ if(!str) return ''; return String(str).replace(/[&<>"]/g, function(tag){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[tag]); }); }
   function formatCurrency(v){ const n = Number(v || 0); return 'R$ ' + n.toFixed(2).replace('.', ','); }
 
-  // === normalizeBedId ===
+  // === normalizeBedId === (unchanged)
   function normalizeBedId(roomId, rawBedId){
     if(!rawBedId) return null;
     let s = String(rawBedId).trim();
@@ -415,7 +415,7 @@
   }
   // === end normalize ===
 
-  // Build reserved maps
+  // Build reserved maps (unchanged logic; suites reserved mapping will still be used)
   function buildReservedMapsFromSheets(){
     const reservedBeds = {};
     const reservedSuites = {};
@@ -502,6 +502,14 @@
     return RESERVED;
   }
 
+  // Helper to detect suite rooms (either the previous group 'q777' or individual suite entries with isSuite flag)
+  function isSuiteRoomId(roomId){
+    if(!roomId) return false;
+    if(String(roomId).toLowerCase() === 'q777') return true;
+    const r = staticRooms.find(s => String(s.roomId) === String(roomId));
+    return !!(r && r.isSuite);
+  }
+
   function isResourceFreeForRange(reservedMap, resourceId, start, end, reservedAllSet){
     if(!resourceId) return true;
     if(reservedAllSet && reservedAllSet.has(resourceId)) return false;
@@ -531,7 +539,7 @@
     }
     const prefixMap = { q007: 'misto', ar: 'feminino', jb: 'only' };
     const prefix = prefixMap[roomId] || (roomId === 'q777' ? '' : (`${roomId}`));
-    if(roomId === 'q777') return [];
+    if(roomId === 'q777' || isSuiteRoomId(roomId)) return [];
     const beds = [];
     for(let i=1;i<=14;i++){
       const id = `${prefix}${i}`;
@@ -550,16 +558,31 @@
       for(const d of dates) if(roomBlockedDates[roomId].has(d)) return { availableBeds: [], availableSuites: [], isAvailable: false };
     }
 
-    if(roomId === 'q777'){
+    // For suite rooms (either grouped or individual suite entries) treat by suite reservation mapping
+    if(isSuiteRoomId(roomId)){
+      // If this is the grouped 'q777' the code will look into SHEETS.suites; for individual suite rooms, attempt to use their suiteId property
       const allSuites = [];
+      // Pull suite IDs from SHEETS if present
       if(SHEETS && Array.isArray(SHEETS.suites) && SHEETS.suites.length){
         SHEETS.suites.forEach(r => {
           const sid = (r.suite_id || r.suite || r.id || r.name || '').trim();
           if(sid) allSuites.push(sid);
         });
       }
+      // If no suites found in SHEETS, fallback to individual staticRooms that are suites
+      if(allSuites.length === 0){
+        staticRooms.forEach(r => { if(r.isSuite && r.suiteId) allSuites.push(r.suiteId); });
+      }
+      // Final fallback
       if(allSuites.length === 0) allSuites.push('S1','S2','S3');
       const availableSuites = allSuites.filter(sid => isResourceFreeForRange(reservedSuites, sid, checkin, checkout, reservedAllSuites));
+      // If roomId is an individual suite (e.g. 's1'), we check availability only for that suiteId if present
+      const staticRoom = staticRooms.find(r => r.roomId === roomId);
+      if(staticRoom && staticRoom.isSuite && staticRoom.suiteId){
+        const sid = staticRoom.suiteId;
+        const avail = availableSuites.includes(sid);
+        return { availableBeds: [], availableSuites: avail ? [sid] : [], isAvailable: avail };
+      }
       return { availableBeds: [], availableSuites, isAvailable: availableSuites.length > 0 };
     } else {
       const allBedsObjs = getBedsForRoom(roomId);
@@ -574,7 +597,7 @@
     if(!RESERVED || !RESERVED.reservedBeds) buildReservedMapsFromSheets();
     const { reservedBeds, reservedSuites, roomBlockedDates, reservedAllBeds, reservedAllSuites } = RESERVED;
     if(roomBlockedDates[roomId] && roomBlockedDates[roomId].has(dateIso)) return false;
-    if(roomId === 'q777'){
+    if(isSuiteRoomId(roomId)){
       const allSuites = [];
       if(SHEETS && Array.isArray(SHEETS.suites) && SHEETS.suites.length){
         SHEETS.suites.forEach(r => {
@@ -582,11 +605,22 @@
           if(sid) allSuites.push(sid);
         });
       }
+      if(allSuites.length === 0) {
+        staticRooms.forEach(r => { if(r.isSuite && r.suiteId) allSuites.push(r.suiteId); });
+      }
       if(allSuites.length === 0) allSuites.push('S1','S2','S3');
       for(const s of allSuites){
         if(reservedAllSuites.has(s)) continue;
         const sset = reservedSuites[s];
         if(!sset || !sset.has(dateIso)) return true;
+      }
+      // If this is an individual suite, ensure at least one suite (itself) is available
+      const staticRoom = staticRooms.find(r => r.roomId === roomId);
+      if(staticRoom && staticRoom.isSuite && staticRoom.suiteId){
+        const sid = staticRoom.suiteId;
+        if(reservedAllSuites.has(sid)) return false;
+        const sset = reservedSuites[sid];
+        return !(sset && sset.has(dateIso));
       }
       return false;
     } else {
@@ -602,7 +636,12 @@
 
   function getBasePrice(roomId){
     const priceKeys = { jb: 'base_price_nice_place', ar: 'base_price_quarto_feminino', q007: 'base_price_quarto_misto', q777: 'base_price_suites' };
-    const key = priceKeys[roomId];
+    let key = priceKeys[roomId];
+    if (!key){
+      // If this is an individual suite room, use suites base price
+      const room = staticRooms.find(r => r.roomId === roomId);
+      if(room && room.isSuite) key = 'base_price_suites';
+    }
     if (!key) return 100;
     const extra = (SHEETS.extras || []).find(e => e.key === key);
     return extra ? parseFloat(extra.price) : 100;
@@ -614,11 +653,17 @@
     if(!d) return getBasePrice(roomId);
     const isFebruary = d.getMonth() === 1;
     if(isFebruary){
-      if(roomId === 'q777') return 1000;
+      if(isSuiteRoomId(roomId)) return 1000;
       if(['jb','q007','ar'].includes(roomId)) return 500;
     }
+    // Try direct match in pricing sheet; if not found and this is an individual suite, try 'q777' pricing fallback
     const priceRow = (SHEETS.pricing || []).find(p => p.room_id === roomId && p.date === dateStr);
-    return priceRow ? parseFloat(priceRow.price) : getBasePrice(roomId);
+    if(priceRow) return parseFloat(priceRow.price);
+    if(isSuiteRoomId(roomId)){
+      const suiteFallback = (SHEETS.pricing || []).find(p => (p.room_id === 'q777' || p.room_id === 'suites' || p.room_id === 'suite') && p.date === dateStr);
+      if(suiteFallback) return parseFloat(suiteFallback.price);
+    }
+    return getBasePrice(roomId);
   }
 
   function computeDynamicPricing(roomId, checkin, checkout, guests=1, selectedBeds=[], selectedSuites=[]){
@@ -628,12 +673,19 @@
     const nights = Math.ceil((end - start) / (1000*60*60*24));
     const nightlyPrices = [];
     let baseTotal = 0;
+    const roomIsSuite = isSuiteRoomId(roomId);
     for (let i = 0; i < nights; i++){
       const d = new Date(start);
       d.setDate(d.getDate() + i);
       const dateStr = formatLocalDateJS(d);
       const pricePerUnit = getPriceForDate(roomId, dateStr);
-      let nightTotal = roomId === 'q777' ? pricePerUnit * (selectedSuites.length || 1) : pricePerUnit * guests;
+      let nightTotal;
+      if (roomIsSuite) {
+        // For suites the unit is per-suite
+        nightTotal = pricePerUnit * (selectedSuites.length || 1);
+      } else {
+        nightTotal = pricePerUnit * guests;
+      }
       nightlyPrices.push({ date: dateStr, price: pricePerUnit, total: nightTotal });
       baseTotal += nightTotal;
     }
@@ -674,6 +726,7 @@
     return bedId;
   }
 
+  // staticRooms now contains the original dorms + three separate suite cards (S1, S2, S3)
   const staticRooms = [
     {
       name: 'Quarto Feminino FreiSa',
@@ -707,23 +760,50 @@
       description:
         'Dormitório misto confortável e arejado, ideal para viajantes solo ou grupos que querem economizar sem perder segurança. Banheiros compartilhados bem mantidos e áreas comuns amplas.'
     },
+
+    // --- Suites split into 3 separate cards as requested ---
     {
-      name: 'Suítes',
-      roomId: 'q777',
+      name: 'Suíte 1',
+      roomId: 's1',
+      suiteId: 'S1',
+      isSuite: true,
       location: 'Copacabana, RJ',
-      beds: '3 suites',
+      beds: '1 suíte',
       bathrooms: 'Banheiro privativo',
       images: [
-        'https://i.imgur.com/kQrL0VB.jpeg',
-        'https://i.imgur.com/4pH80WA.jpeg',
-        'https://i.imgur.com/7HTK1HL.jpeg',
-        'https://i.imgur.com/dT8oe4I.jpeg',
-        'https://i.imgur.com/9QzJr8A.jpeg',
-        'https://i.imgur.com/N0Tn3Nw.jpeg'
+        'https://i.imgur.com/b7qvANs.jpeg'
       ],
-      description:
-        'Suítes privativas com banheiro próprio, pensadas para casais ou pequenos grupos. Quartos mobiliados com roupa de cama de qualidade e limpeza agendada.'
+      description: 'Suíte 1 — quarto aconchegante, ideal para casal. Foto representativa acima.'
     },
+    {
+      name: 'Suíte 2',
+      roomId: 's2',
+      suiteId: 'S2',
+      isSuite: true,
+      location: 'Copacabana, RJ',
+      beds: '1 suíte',
+      bathrooms: 'Banheiro privativo',
+      images: [
+        'https://i.imgur.com/MFmbhwu.jpeg',
+        'https://i.imgur.com/7f97Qlj.jpeg'
+      ],
+      description: 'Suíte 2 — imagens mostram cama e área de apoio. Ideal para casal ou viagem a dois.'
+    },
+    {
+      name: 'Suíte 3',
+      roomId: 's3',
+      suiteId: 'S3',
+      isSuite: true,
+      location: 'Copacabana, RJ',
+      beds: '1 suíte',
+      bathrooms: 'Banheiro privativo',
+      images: [
+        'https://i.imgur.com/ld63HJl.jpeg',
+        'https://i.imgur.com/ykCgL6E.jpeg'
+      ],
+      description: 'Suíte 3 — suíte com banheiro privativo e detalhes de conforto.'
+    },
+
     {
       name: 'Only womans (100% feminino)',
       roomId: 'jb',
@@ -745,7 +825,15 @@
   function renderTestimonials(){ const container = qs('#testimonialsGrid'); if(!container) return; const testimonials=[ { text:'Fiquei 4 noites em Copacabana. Localização excelente...', name:'Hóspede', location:'Brasil' },{ text:'Minha hospedagem foi super tranquila...', name:'Hóspede', location:'Internacional' },{ text:'Localização excelente; o proprietário estava disponível...', name:'Hóspede', location:'São Paulo' } ]; container.innerHTML = testimonials.map(t=>`<div class="testimonial-card"><div class="testimonial-text">"${t.text}"</div><div style="margin-top:8px">🌟🌟🌟🌟🌟</div><div class="testimonial-author"><div class="author-avatar">${t.name[0]}</div><div><div style="font-weight:700">${t.name}</div><div style="color:var(--muted)">${t.location}</div></div></div></div>`).join(''); }
 
   function renderRoomsGrid(){ const container = qs('#roomsGrid'); if(!container) return;
-    container.innerHTML = staticRooms.map((r, idx)=>{ const indicators = r.images && r.images.length>1 ? `<div class="hero-indicators" data-room="${idx}">${r.images.map((_,i)=>`<button data-i="${i}" class="${i===0?'active':''}" aria-label="slide ${i+1}"></button>`).join('')}</div>` : ''; const nav = r.images && r.images.length>1 ? `<button class="carousel-btn left" data-idx="${idx}" data-action="prev" aria-label="Anterior">‹</button><button class="carousel-btn right" data-idx="${idx}" data-action="next" aria-label="Próximo">›</button>` : ''; const shortDesc = (r.description || '').length > 140 ? (r.description.slice(0,140).trim() + '…') : (r.description || ''); const metaHtml = `<div class="meta">${r.location} · ${r.beds} · ${r.bathrooms}</div>`; return `<article class="room-card" data-roomid="${r.roomId}"><div class="room-header">${r.name}</div><div class="room-carousel" id="roomCarousel${idx}"><img src="${r.images && r.images[0] ? r.images[0] : ''}" loading="lazy" alt="${r.name}" data-idx="0" data-room="${idx}" />${nav}${indicators}</div><div class="room-info">${metaHtml}<div class="divider"></div><div style="color:var(--muted)">${shortDesc}</div><div style="margin-top:auto;display:flex;gap:8px;margin-top:12px"><button class="btn" data-detail="${idx}" style="margin-top:0">Mostrar mais</button></div></div></article>` }).join('');
+    container.innerHTML = staticRooms.map((r, idx)=>{ 
+      const firstImage = (r.images && r.images[0]) || '';
+      const indicators = r.images && r.images.length>1 ? `<div class="hero-indicators" data-room="${idx}">${r.images.map((_,i)=>`<button data-i="${i}" class="${i===0?'active':''}" aria-label="slide ${i+1}"></button>`).join('')}</div>` : '';
+      const nav = r.images && r.images.length>1 ? `<button class="carousel-btn left" data-idx="${idx}" data-action="prev" aria-label="Anterior">‹</button><button class="carousel-btn right" data-idx="${idx}" data-action="next" aria-label="Próximo">›</button>` : '';
+      const shortDesc = (r.description || '').length > 140 ? (r.description.slice(0,140).trim() + '…') : (r.description || '');
+      const metaHtml = `<div class="meta">${r.location} · ${r.beds} · ${r.bathrooms}</div>`;
+
+      return `<article class="room-card" data-roomid="${r.roomId}"><div class="room-header">${r.name}</div><div class="room-carousel" id="roomCarousel${idx}"><img src="${firstImage}" loading="lazy" alt="${r.name}" data-idx="0" data-room="${idx}" />${nav}${indicators}</div><div class="room-info">${metaHtml}<div class="divider"></div><div style="color:var(--muted)">${shortDesc}</div><div style="margin-top:auto;display:flex;gap:8px;margin-top:12px"><button class="btn" data-detail="${idx}" style="margin-top:0">Mostrar mais</button></div></div></article>` 
+    }).join('');
 
     staticRooms.forEach((r, idx)=>{ const carousel = qs(`#roomCarousel${idx}`); if(!carousel) return; const img = carousel.querySelector('img'); let cur=0; function show(i){ if(!r.images || !r.images.length) return; cur = ((i % r.images.length)+r.images.length)%r.images.length; img.src = r.images[cur]; img.setAttribute('loading','lazy'); const inds = carousel.querySelectorAll('.hero-indicators button'); inds.forEach((b,bi)=> b.classList.toggle('active', bi===cur)); } const nextBtn = carousel.querySelector('[data-action="next"]'); const prevBtn = carousel.querySelector('[data-action="prev"]'); if(nextBtn) nextBtn.addEventListener('click', ()=> show(cur+1)); if(prevBtn) prevBtn.addEventListener('click', ()=> show(cur-1)); carousel.querySelectorAll('.hero-indicators button').forEach((b,i)=> b.addEventListener('click', ()=> show(i))); img.addEventListener('click', ()=> openLightbox(r.images || [], cur)); });
     qsa('[data-detail]').forEach(btn => btn.addEventListener('click', e => { const idx = Number(e.currentTarget.getAttribute('data-detail')); openDetailModal(staticRooms[idx]); }));
@@ -755,8 +843,19 @@
 
   function openDetailModal(room){
     const overlay = qs('#calendarOverlay');
-    const iconHtml = room.roomId === 'q777' ? getSuiteIconHtml() : getBedIconHtml();
+    const iconHtml = room.isSuite ? getSuiteIconHtml() : getBedIconHtml();
     const currentDesc = room.description || '';
+    // For individual suite cards show their gallery inline
+    let suiteHtml = '';
+    if(room.isSuite){
+      suiteHtml = `<div style="margin-top:12px; font-weight:700; color:var(--muted)">Esta é ${escapeHtml(room.name)} (${escapeHtml(room.suiteId || '')}). Clique em "Ver fotos" para ampliar as imagens.</div>`;
+      suiteHtml += `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">`;
+      (room.images || []).forEach((imgUrl, i) => {
+        suiteHtml += `<div style="width:48%;"><img src="${imgUrl}" alt="${escapeHtml(room.name)} foto ${i+1}" style="width:100%;height:120px;object-fit:cover;border-radius:8px" /></div>`;
+      });
+      suiteHtml += `</div><div style="margin-top:8px"><button class="btn" data-action="view-suite" data-room="${room.roomId}">Ver fotos</button></div>`;
+    }
+
     overlay.innerHTML = `
       <div class="modal popup-small" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
         <div class="modal-header">
@@ -774,6 +873,7 @@
         <div class="modal-body">
           <div id="detailView">
             <p id="detailDesc" style="color:var(--muted);white-space:pre-wrap">${escapeHtml(currentDesc)}</p>
+            ${suiteHtml}
           </div>
         </div>
         <div class="modal-footer">
@@ -782,9 +882,6 @@
       </div>
     `;
     overlay.classList.add('show'); overlay.setAttribute('aria-hidden','false');
-
-    const closeBtn = qs('#detailClose');
-    const closeFooter = qs('#detailCloseFooter');
 
     function closeAll(){
       overlay.classList.remove('show');
@@ -796,13 +893,22 @@
       if(e.key === 'Escape') closeAll();
     }
 
-    closeBtn?.addEventListener('click', closeAll);
-    closeFooter?.addEventListener('click', closeAll);
+    // Open gallery for this suite
+    overlay.querySelectorAll('[data-action="view-suite"]').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        const rid = ev.currentTarget.getAttribute('data-room');
+        const r = staticRooms.find(x => x.roomId === rid);
+        if(r && Array.isArray(r.images) && r.images.length) openLightbox(r.images, 0);
+      });
+    });
+
+    qs('#detailClose')?.addEventListener('click', closeAll);
+    qs('#detailCloseFooter')?.addEventListener('click', closeAll);
     overlay.addEventListener('click', ev => { if(ev.target === overlay) closeAll(); });
     document.addEventListener('keydown', onKey);
   }
 
-  // Beds / Suites modals
+  // Beds / Suites modals (openBedsModal & openSuitesModal kept for dorms and for grouped behavior; selecting individual suite is simpler in reservation card)
   function openBedsModal({ roomId, maxBeds = 1, preselected = [], checkin = null, checkout = null, onConfirm = null } = {}) {
     const overlay = qs('#calendarOverlay');
     overlay.innerHTML = '';
@@ -927,6 +1033,7 @@
     document.addEventListener('keydown', onKey);
   }
 
+  // openSuitesModal remains available for grouped suite behavior but for individual suite cards we simply toggle selection in the reservation card
   function openSuitesModal({ checkin = null, checkout = null, preselected = [], onConfirm = null } = {}) {
     const overlay = qs('#calendarOverlay');
     overlay.innerHTML = '';
@@ -989,7 +1096,7 @@
     }
     renderSuites();
 
-    function closeAll(){ overlay.classList.remove('show'); overlay.innerHTML=''; overlay.setAttribute('aria-hidden','true'); document.removeEventListener('keydown', onKey); }
+    function closeAll(){ overlay.classList.remove('show'); overlay.innerHTML = ''; overlay.setAttribute('aria-hidden','true'); document.removeEventListener('keydown', onKey); }
     function onKey(e){ if(e.key==='Escape') closeAll(); }
 
     modal.querySelector('#suitesClose')?.addEventListener('click', closeAll);
@@ -1132,7 +1239,7 @@
             <div class="form-group"><label>Hóspedes</label><select data-role="guests">${Array.from({length:14},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('')}</select></div>
           </div>
           <div style="width:140px">
-            <div class="form-group"><label>Selecionar</label><button class="btn-select" data-role="selectbeds">${r.roomId==='q777' ? 'Selecionar suítes' : 'Selecionar camas'}</button></div>
+            <div class="form-group"><label>Selecionar</label><button class="btn-select" data-role="selectbeds">${r.isSuite ? 'Selecionar suíte' : (r.roomId==='q777' ? 'Selecionar suítes' : 'Selecionar camas')}</button></div>
           </div>
         </div>
 
@@ -1237,11 +1344,30 @@
       checkinInput.addEventListener('click', ()=> openSmallCalFor('checkin'));
       checkoutInput.addEventListener('click', ()=> openSmallCalFor('checkout'));
 
-      guestsSelect.addEventListener('change', e => { state.guests = Number(e.target.value); if(state.selectedBeds.length > state.guests){ state.selectedBeds = state.selectedBeds.slice(0, state.guests); } ensureGuestInfo(state.guests); renderGuestFields(); selectBedsBtn.textContent = roomId==='q777' ? `Selecionar suítes (${state.selectedSuites.length})` : `Selecionar camas (${state.selectedBeds.length})`; updatePriceUI(); });
+      guestsSelect.addEventListener('change', e => { state.guests = Number(e.target.value); if(state.selectedBeds.length > state.guests){ state.selectedBeds = state.selectedBeds.slice(0, state.guests); } ensureGuestInfo(state.guests); renderGuestFields(); selectBedsBtn.textContent = roomObj && roomObj.isSuite ? `Selecionar suíte (${state.selectedSuites.length})` : (roomId==='q777' ? `Selecionar suítes (${state.selectedSuites.length})` : `Selecionar camas (${state.selectedBeds.length})`); updatePriceUI(); });
 
       renderGuestFields();
 
       selectBedsBtn.addEventListener('click', ()=> {
+        // For individual suite cards: toggle the selection of this suite directly (no extra modal)
+        if(roomObj && roomObj.isSuite){
+          const sid = roomObj.suiteId;
+          if(!sid){
+            alert('Erro: suíte não identificada.');
+            return;
+          }
+          // toggle
+          if(state.selectedSuites.includes(sid)){
+            state.selectedSuites = state.selectedSuites.filter(x => x !== sid);
+          } else {
+            state.selectedSuites = [sid];
+          }
+          selectBedsBtn.textContent = `Selecionar suíte (${state.selectedSuites.length})`;
+          updatePriceUI();
+          return;
+        }
+
+        // For grouped suites (legacy q777) open the suites modal
         if(roomId === 'q777'){
           openSuitesModal({ checkin: state.checkin, checkout: state.checkout, preselected: state.selectedSuites, onConfirm: (sel)=> { state.selectedSuites = sel; selectBedsBtn.textContent = `Selecionar suítes (${sel.length})`; updatePriceUI(); } });
         } else {
@@ -1264,10 +1390,13 @@
         if(parseLocalDate(state.checkout) <= parseLocalDate(state.checkin)){ alert('Check-out deve ser após check-in.'); return; }
         const avail = checkAvailability(roomId, state.checkin, state.checkout);
         if(!avail.isAvailable){ alert('Desculpe, o período contém dias reservados. Escolha outro intervalo.'); return; }
-        if(roomId === 'q777' && state.selectedSuites.length===0){ alert('Selecione ao menos uma suíte.'); return; }
-        if(roomId !== 'q777' && state.selectedBeds.length !== state.guests){
-          alert(`Para este quarto é necessário selecionar exatamente ${state.guests} cama(s). Atualmente selecionadas: ${state.selectedBeds.length}.`);
-          return;
+        if((roomObj && roomObj.isSuite) || roomId === 'q777'){
+          if(state.selectedSuites.length===0){ alert('Selecione ao menos uma suíte.'); return; }
+        } else {
+          if(state.selectedBeds.length !== state.guests){
+            alert(`Para este quarto é necessário selecionar exatamente ${state.guests} cama(s). Atualmente selecionadas: ${state.selectedBeds.length}.`);
+            return;
+          }
         }
         ensureGuestInfo(state.guests);
         for(let i=0;i<state.guests;i++){
@@ -1279,7 +1408,7 @@
         }
 
         const nights = Math.ceil((parseLocalDate(state.checkout) - parseLocalDate(state.checkin)) / (1000*60*60*24));
-        const bedsText = roomId === 'q777' ? state.selectedSuites.join(', ') : state.selectedBeds.map(bid=>bedIdToLabel(roomId, bid)).join(', ');
+        const bedsText = (roomObj && roomObj.isSuite) || roomId === 'q777' ? state.selectedSuites.join(', ') : state.selectedBeds.map(bid=>bedIdToLabel(roomId, bid)).join(', ');
         const { baseTotal } = computeDynamicPricing(roomId, state.checkin, state.checkout, state.guests, state.selectedBeds, state.selectedSuites);
         let total = baseTotal;
         if(state.early) total += (getExtraPrice('early_checkin') || 0) * state.guests;
@@ -1288,7 +1417,7 @@
         if(state.transferOut) total += getExtraPrice('transfer_departure') || 0;
 
         const roomName = roomObj ? roomObj.name : roomId;
-        let message = `Olá! Gostaria de solicitar reserva para ${roomName}.\n\n📅 Check-in: ${formatBR(state.checkin)}\n📅 Check-out: ${formatBR(state.checkout)}\n🌙 Noites: ${nights}\n👥 Hóspedes: ${state.guests}\n${roomId==='q777'?'🏠 Suítes':'🛏️ Camas'}: ${bedsText}\n\n👤 Dados dos hóspedes:\n`;
+        let message = `Olá! Gostaria de solicitar reserva para ${roomName}.\n\n📅 Check-in: ${formatBR(state.checkin)}\n📅 Check-out: ${formatBR(state.checkout)}\n🌙 Noites: ${nights}\n👥 Hóspedes: ${state.guests}\n${(roomObj && roomObj.isSuite) || roomId==='q777' ? '🏠 Suítes' : '🛏️ Camas'}: ${bedsText}\n\n👤 Dados dos hóspedes:\n`;
         state.guestInfo.forEach((g, idx) => { message += `- ${idx+1}. ${g.name} — ${g.id}\n`; });
         message += `\n💰 Resumo:\n- Valor base: ${formatCurrency(baseTotal)}`;
         if(state.early) message += `\n- Check-in antecipado (por pessoa): ${formatCurrency(getExtraPrice('early_checkin'))} × ${state.guests} = ${formatCurrency((getExtraPrice('early_checkin')||0) * state.guests)}`;
