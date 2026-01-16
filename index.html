@@ -281,14 +281,22 @@
     ar: 'border:1px solid #5d021f; background: linear-gradient(180deg,#3b0b0b,#5d021f); color: #fff;',
     q007: 'border:1px solid #155e75; background: linear-gradient(180deg,#083344,#0b8793); color:#fff;',
     q777: 'border:1px solid #6b1e6b; background:linear-gradient(180deg,#4b0a4b,#7b1e7b); color:#fff;',
-    jb: 'border:1px solid #b45309; background:linear-gradient(180deg,#78350f,#b45309); color:#fff;'
+    jb: 'border:1px solid #b45309; background:linear-gradient(180deg,#78350f,#b45309); color:#fff;',
+    // added per-suite card styles so reservation cards also keep a distinct look
+    s1: 'border:1px solid #6b1e6b; background:linear-gradient(180deg,#4b0a4b,#7b1e7b); color:#fff;',
+    s2: 'border:1px solid #155e75; background: linear-gradient(180deg,#083344,#0b8793); color:#fff;',
+    s3: 'border:1px solid #b45309; background:linear-gradient(180deg,#78350f,#b45309); color:#fff;'
   };
 
   const ROOM_CAL_COLORS = {
     ar: { available:'#fdecea', reserved:'#5d021f', textAvailable:'#5d021f', textReserved:'#ffffff', swatchAvailable:'#feecec', swatchReserved:'#5d021f' },
     q007: { available:'#e6f6f9', reserved:'#0b8793', textAvailable:'#083344', textReserved:'#ffffff', swatchAvailable:'#e8f7fb', swatchReserved:'#0b8793' },
     q777: { available:'#f3e8fb', reserved:'#7b1e7b', textAvailable:'#4b0a4b', textReserved:'#ffffff', swatchAvailable:'#f7eefb', swatchReserved:'#7b1e7b' },
-    jb: { available:'#fff7ed', reserved:'#b45309', textAvailable:'#7a2f05', textReserved:'#ffffff', swatchAvailable:'#fff3e0', swatchReserved:'#b45309' }
+    jb: { available:'#fff7ed', reserved:'#b45309', textAvailable:'#7a2f05', textReserved:'#ffffff', swatchAvailable:'#fff3e0', swatchReserved:'#b45309' },
+    // added calendar color sets for individual suites S1, S2, S3
+    s1: { available:'#f3e8fb', reserved:'#7b1e7b', textAvailable:'#4b0a4b', textReserved:'#ffffff', swatchAvailable:'#f7eefb', swatchReserved:'#7b1e7b' },
+    s2: { available:'#e6f6f9', reserved:'#0b8793', textAvailable:'#083344', textReserved:'#ffffff', swatchAvailable:'#e8f7fb', swatchReserved:'#0b8793' },
+    s3: { available:'#fff7ed', reserved:'#b45309', textAvailable:'#7a2f05', textReserved:'#ffffff', swatchAvailable:'#fff3e0', swatchReserved:'#b45309' }
   };
 
   const calSmallState = { roomId: null, currentDate: new Date(), onSelect: null };
@@ -1398,6 +1406,7 @@
             return;
           }
         }
+
         ensureGuestInfo(state.guests);
         for(let i=0;i<state.guests;i++){
           const g = state.guestInfo[i];
