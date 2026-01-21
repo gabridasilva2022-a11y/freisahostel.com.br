@@ -179,6 +179,48 @@
 
     @keyframes fadeIn{from{opacity:0}to{opacity:1}}
     button:focus, input:focus, select:focus { outline:3px solid rgba(39,174,96,0.12); outline-offset:2px; border-radius:8px; }
+
+    /* Tabs & video grid requested by user */
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .tab-btn {
+      padding: 10px 20px;
+      border: none;
+      cursor: pointer;
+      background: #eee;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+    .tab-btn.active {
+      background: #000;
+      color: #fff;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 15px;
+      margin-top: 8px;
+    }
+    .video-grid iframe {
+      width: 100%;
+      height: 450px;
+      border-radius: 12px;
+      border: none;
+    }
+
+    /* make iframes responsive on small screens */
+    @media (max-width:640px){
+      .video-grid iframe { height: 220px; }
+    }
   </style>
 </head>
 <body>
@@ -818,7 +860,21 @@
       location: 'Copacabana, RJ',
       beds: '14 camas',
       bathrooms: '2 banheiros',
-      images: ['https://i.imgur.com/OddkKoI.jpeg','https://i.imgur.com/W9koWkI.jpeg','https://i.imgur.com/yEaKK3Q.jpeg'],
+      images: [
+  'https://i.imgur.com/hpLfZad.jpeg',
+  'https://i.imgur.com/bLwBGwG.jpeg',
+  'https://i.imgur.com/yJOHQqM.jpeg',
+  'https://i.imgur.com/XN1ac9m.jpeg',
+  'https://i.imgur.com/xY62QCK.jpeg',
+  'https://i.imgur.com/xypTEix.jpeg',
+  'https://i.imgur.com/DXnKQwl.jpeg',
+  'https://i.imgur.com/l4Zi2SR.jpeg',
+  'https://i.imgur.com/7jCWHgE.jpeg',
+  'https://i.imgur.com/kOxm45T.jpeg',
+  'https://i.imgur.com/UUWwnRC.jpeg',
+  'https://i.imgur.com/QIjGhKF.jpeg',
+  'https://i.imgur.com/RNk5KP2.jpeg'
+],
       description:
         'Quarto “Only womans” — ambiente 100% feminino, relaxante e bem localizado. Próximo a mercados, padarias e transporte público.'
     }
@@ -849,20 +905,67 @@
 
   function openLightbox(images, index=0){ const lb = qs('#lightbox'); lb.innerHTML = `<div style="position:relative;max-width:95%;max-height:95%"><button style="position:absolute;right:-10px;top:-10px;background:#fff;border-radius:999px;width:40px;height:40px;border:0;font-size:20px" id="lbClose">×</button><img id="lbImg" src="${images[index]||''}" loading="lazy" alt="" /></div>`; lb.classList.add('show'); lb.setAttribute('aria-hidden','false'); let cur=index; function show(i){ if(!images || !images.length) return; cur = ((i % images.length)+images.length)%images.length; qs('#lbImg').src = images[cur]; } function onKey(e){ if(e.key==='Escape') close(); if(e.key==='ArrowRight') show(cur+1); if(e.key==='ArrowLeft') show(cur-1); } function close(){ lb.classList.remove('show'); lb.innerHTML=''; lb.setAttribute('aria-hidden','true'); document.removeEventListener('keydown', onKey); } qs('#lbClose')?.addEventListener('click', close); lb.addEventListener('click', ev=>{ if(ev.target===lb) close(); }); document.addEventListener('keydown', onKey); }
 
+  // Tab switching function (works within global document; modal content ids are 'fotos' and 'videos')
+  function openTab(tabId){
+    // toggle tab buttons
+    qsa('.tab-btn').forEach(btn => {
+      const target = btn.getAttribute('data-target') || '';
+      btn.classList.toggle('active', target === tabId);
+    });
+    // toggle contents
+    qsa('.tab-content').forEach(tc => {
+      tc.classList.toggle('active', tc.id === tabId);
+    });
+  }
+
   function openDetailModal(room){
     const overlay = qs('#calendarOverlay');
     const iconHtml = room.isSuite ? getSuiteIconHtml() : getBedIconHtml();
     const currentDesc = room.description || '';
-    // For individual suite cards show their gallery inline
-    let suiteHtml = '';
-    if(room.isSuite){
-      suiteHtml = `<div style="margin-top:12px; font-weight:700; color:var(--muted)">Esta é ${escapeHtml(room.name)} (${escapeHtml(room.suiteId || '')}). Clique em "Ver fotos" para ampliar as imagens.</div>`;
-      suiteHtml += `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">`;
-      (room.images || []).forEach((imgUrl, i) => {
-        suiteHtml += `<div style="width:48%;"><img src="${imgUrl}" alt="${escapeHtml(room.name)} foto ${i+1}" style="width:100%;height:120px;object-fit:cover;border-radius:8px" /></div>`;
+    // Build gallery HTML for "Fotos" tab
+    let galleryHtml = '';
+    if(Array.isArray(room.images) && room.images.length){
+      galleryHtml += `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">`;
+      room.images.forEach((imgUrl, i) => {
+        galleryHtml += `<div style="width:48%;"><img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(room.name)} foto ${i+1}" style="width:100%;height:120px;object-fit:cover;border-radius:8px" /></div>`;
       });
-      suiteHtml += `</div><div style="margin-top:8px"><button class="btn" data-action="view-suite" data-room="${room.roomId}">Ver fotos</button></div>`;
+      galleryHtml += `</div><div style="margin-top:8px"><button class="btn" id="detailViewPhotos" data-room="${room.roomId}">Ver fotos</button></div>`;
+    } else {
+      galleryHtml = `<div style="color:var(--muted);">Sem fotos disponíveis.</div>`;
     }
+
+    // Videos grid (only for Only womans - roomId 'jb')
+    const includeVideos = room.roomId === 'jb';
+    const videosHtml = includeVideos ? `
+      <div class="video-grid">
+        <iframe src="https://www.youtube.com/embed/WcVQE0ohM-4" allowfullscreen></iframe>
+        <iframe src="https://www.youtube.com/embed/oJaLD8c1NLE" allowfullscreen></iframe>
+        <iframe src="https://www.youtube.com/embed/c5dg4DlxKjc" allowfullscreen></iframe>
+        <iframe src="https://www.youtube.com/embed/G81Y9DOxq3A" allowfullscreen></iframe>
+        <iframe src="https://www.youtube.com/embed/5rJZ_BA4Qeg" allowfullscreen></iframe>
+        <iframe src="https://www.youtube.com/embed/xy4TM2bg2YY" allowfullscreen></iframe>
+        <iframe src="https://www.youtube.com/embed/clFaaNBKviE" allowfullscreen></iframe>
+        <iframe src="https://www.youtube.com/embed/AgwfVt5_xR0" allowfullscreen></iframe>
+        <iframe src="https://www.youtube.com/embed/DXsE7a8ZPB8" allowfullscreen></iframe>
+        <iframe src="https://www.youtube.com/embed/6BINpzCx-LU" allowfullscreen></iframe>
+      </div>
+    ` : '';
+
+    // Compose modal with tabs (Fotos/Vídeos) — only include Vídeos tab if includeVideos === true
+    const tabsButtons = includeVideos
+      ? `<div class="tabs" style="margin-top:12px">
+           <button class="tab-btn active" data-target="fotos" onclick="openTab('fotos')">Fotos</button>
+           <button class="tab-btn" data-target="videos" onclick="openTab('videos')">Vídeos</button>
+         </div>`
+      : `<div class="tabs" style="margin-top:12px">
+           <button class="tab-btn active" data-target="fotos" onclick="openTab('fotos')">Fotos</button>
+         </div>`;
+
+    const videosSection = includeVideos
+      ? `<div id="videos" class="tab-content">
+           ${videosHtml}
+         </div>`
+      : '';
 
     overlay.innerHTML = `
       <div class="modal popup-small" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
@@ -881,7 +984,15 @@
         <div class="modal-body">
           <div id="detailView">
             <p id="detailDesc" style="color:var(--muted);white-space:pre-wrap">${escapeHtml(currentDesc)}</p>
-            ${suiteHtml}
+
+            ${tabsButtons}
+
+            <div id="fotos" class="tab-content active">
+              ${galleryHtml}
+            </div>
+
+            ${videosSection}
+
           </div>
         </div>
         <div class="modal-footer">
@@ -901,19 +1012,23 @@
       if(e.key === 'Escape') closeAll();
     }
 
-    // Open gallery for this suite
-    overlay.querySelectorAll('[data-action="view-suite"]').forEach(btn => {
-      btn.addEventListener('click', (ev) => {
+    // Wire up "Ver fotos" button to open the lightbox (if present)
+    const viewPhotosBtn = overlay.querySelector('#detailViewPhotos');
+    if(viewPhotosBtn){
+      viewPhotosBtn.addEventListener('click', (ev) => {
         const rid = ev.currentTarget.getAttribute('data-room');
         const r = staticRooms.find(x => x.roomId === rid);
         if(r && Array.isArray(r.images) && r.images.length) openLightbox(r.images, 0);
       });
-    });
+    }
 
     qs('#detailClose')?.addEventListener('click', closeAll);
     qs('#detailCloseFooter')?.addEventListener('click', closeAll);
     overlay.addEventListener('click', ev => { if(ev.target === overlay) closeAll(); });
     document.addEventListener('keydown', onKey);
+
+    // ensure the Fotos tab is active by default
+    openTab('fotos');
   }
 
   // Beds / Suites modals (openBedsModal & openSuitesModal kept for dorms and for grouped behavior; selecting individual suite is simpler in reservation card)
@@ -1512,5 +1627,6 @@
   (function init(){ document.documentElement.lang='pt-BR'; document.documentElement.setAttribute('translate','no'); applySavedRoomDescs(); renderAll(); loadSheets(); })();
 
   </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon='{"version":"2024.11.0","token":"4dce57bed6fc4ba3a9a1be6f91cb43c2","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
